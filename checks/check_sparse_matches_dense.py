@@ -53,3 +53,10 @@ def run(kernel=None, randomise_b=False):
 
 if __name__ == "__main__":
     run()
+
+
+if __name__ == "__main__":
+    print("--- beta, b random in [-2, 2]")
+    run(kernel={"type": "beta", "learn_b": True, "b_init": 0.0, "b_min": -2.0, "b_max": 2.0,
+                "moment_match_init": True, "densifier": "course", "moment_dim": 2},
+        randomise_b=True)

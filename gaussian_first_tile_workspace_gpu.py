@@ -31,6 +31,7 @@ NEAR_PLANE = _base_trainer.NEAR_PLANE
 SUPPORT_RADIUS_SQUARED = _base_trainer.SUPPORT_RADIUS_SQUARED
 TILE = _base_trainer.TILE
 projected_covariance = _base_trainer.projected_covariance
+kernel_support = _base_trainer.kernel_support
 
 
 @wp.kernel(enable_backward=False)
@@ -39,6 +40,7 @@ def project_tile_records(
     log_scales: wp.array(dtype=wp.vec3),
     quaternions: wp.array(dtype=wp.vec4),
     opacity_logits: wp.array(dtype=wp.float32),
+    shapes: wp.array(dtype=wp.float32),
     active: wp.array(dtype=wp.int32),
     cameras: wp.array(dtype=wp.mat44),
     view_ids: wp.array(dtype=wp.int32),
@@ -47,6 +49,7 @@ def project_tile_records(
     height: int,
     focal: float,
     view_count: int,
+    kernel_mode: int,
     compact_box_enabled: int,
     compact_box_beta: float,
     compact_box_alpha_min: float,
@@ -76,15 +79,12 @@ def project_tile_records(
                 log_scales[splat], quaternions[splat], camera,
                 point[0], point[1], z, focal,
             )
-            support = float(SUPPORT_RADIUS_SQUARED)
-            if compact_box_enabled != 0:
-                opacity = 1.0 / (1.0 + wp.exp(-opacity_logits[splat]))
-                support = 0.0
-                if opacity > compact_box_alpha_min:
-                    support = wp.min(
-                        float(SUPPORT_RADIUS_SQUARED),
-                        compact_box_beta * 2.0 * wp.log(opacity / compact_box_alpha_min),
-                    )
+            # Same per-splat truncation radius `alpha_at_pixel` shades with, for either kernel.
+            opacity = 1.0 / (1.0 + wp.exp(-opacity_logits[splat]))
+            support = kernel_support(
+                opacity, shapes[splat], kernel_mode, compact_box_enabled,
+                compact_box_beta, compact_box_alpha_min,
+            )
 
             determinant = covariance[0] * covariance[2] - covariance[1] * covariance[1]
             if support > 0.0 and determinant > 1.0e-12:
@@ -152,7 +152,7 @@ class GaussianFirstTileWorkspace:
         self.view_ids = wp.zeros(max_views_per_batch, dtype=wp.int32, device=self.device)
 
     def build(self, means, log_scales, quaternions, opacity, active_device, cameras,
-              view_ids, width, height, focal, compact_box):
+              view_ids, width, height, focal, compact_box, shapes=None, kernel_mode=0):
         view_ids = np.asarray(view_ids, np.int32)
         view_count = len(view_ids)
         if view_count < 1 or view_count > self.max_views_per_batch:
@@ -161,6 +161,10 @@ class GaussianFirstTileWorkspace:
         self.view_ids_host[:view_count] = view_ids
         self.view_ids.assign(self.view_ids_host)
         work_items = view_count * self.capacity
+        if shapes is None:
+            if getattr(self, "_zero_shapes", None) is None:
+                self._zero_shapes = wp.zeros(self.capacity, dtype=wp.float32, device=self.device)
+            shapes = self._zero_shapes
         group_count = view_count * self.tiles_per_view
 
         if _tile_builder_module.PROFILE_TILES:
@@ -170,9 +174,9 @@ class GaussianFirstTileWorkspace:
             project_tile_records,
             dim=work_items,
             inputs=[
-                means, log_scales, quaternions, opacity, active_device,
+                means, log_scales, quaternions, opacity, shapes, active_device,
                 cameras, self.view_ids, self.capacity, width, height, focal, view_count,
-                int(compact_box["enabled"]), float(compact_box["beta"]),
+                int(kernel_mode), int(compact_box["enabled"]), float(compact_box["beta"]),
                 float(compact_box["alpha_min"]),
             ],
             outputs=[

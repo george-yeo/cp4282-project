@@ -63,6 +63,8 @@ class TrainingConfig:
             "opacity": 0.05,
             "scale": 0.005,
             "rotation": 0.001,
+            # Learning rate of the Beta shape parameter b (only used when kernel.learn_b).
+            "shape": 0.001,
         },
         "densification": {
             "interval": 100,
@@ -97,6 +99,21 @@ class TrainingConfig:
         "sparse": {
             "enabled": True,
             "samples_per_tile": 48,
+        },
+        # Splat kernel. "gaussian" is the course kernel. "beta" is (1 - q/9)^(4 exp(b)) from
+        # Deformable Beta Splatting, with b per splat, learnable or frozen at b_init.
+        "kernel": {
+            "type": "gaussian",
+            "learn_b": True,
+            "b_init": 0.0,
+            "b_min": -2.0,
+            "b_max": 2.0,
+            # Scale initial Beta splats so their footprint has the Gaussian's second moment.
+            "moment_match_init": True,
+            # "course" or "kernel_aware" (arm C: rho(beta) split test, c(beta) ranking).
+            "densifier": "course",
+            # 2 = moments of the rendered 2D footprint (default); 3 = the proposal's 3D moments.
+            "moment_dim": 2,
         },
         "adaptive": {
             "late_prune_growth_window": 3,
@@ -189,6 +206,18 @@ class TrainingConfig:
         adaptive = self.values["adaptive"]
         convergence = self.values["convergence"]
         reporting = self.values["reporting"]
+        kernel = self.values["kernel"]
+        if kernel["type"] not in ("gaussian", "beta"):
+            raise ValueError("kernel.type must be 'gaussian' or 'beta'.")
+        if kernel["densifier"] not in ("course", "kernel_aware"):
+            raise ValueError("kernel.densifier must be 'course' or 'kernel_aware'.")
+        if kernel["moment_dim"] not in (2, 3):
+            raise ValueError("kernel.moment_dim must be 2 or 3.")
+        for name in ("learn_b", "moment_match_init"):
+            if not isinstance(kernel[name], bool):
+                raise ValueError(f"kernel.{name} must be true or false.")
+        if not kernel["b_min"] <= kernel["b_init"] <= kernel["b_max"]:
+            raise ValueError("kernel.b_init must lie in [kernel.b_min, kernel.b_max].")
         if runtime["arch"] not in ("cpu", "gpu"):
             raise ValueError("runtime.arch must be 'cpu' or 'gpu'.")
         if not isinstance(runtime["seed"], int) or isinstance(runtime["seed"], bool):

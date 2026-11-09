@@ -91,6 +91,58 @@ SCALE_CLAMP_MAX_FRACTION = 1.0 / 3.0
 ADAM_BETA1 = 0.9
 ADAM_BETA2 = 0.999
 ADAM_EPS = 1.0e-8
+# Host-side copies of the kernel selector (wp.constant values cannot be compared on the host).
+KERNEL_GAUSSIAN_MODE = 0
+KERNEL_BETA_MODE = 1
+
+def beta_of(shapes) -> np.ndarray:
+    return 4.0 * np.exp(np.asarray(shapes, np.float64))
+
+
+def moment_variance_inverse(shapes, moment_dim=2) -> np.ndarray:
+    """Gaussian-equivalent variance / Beta footprint variance, at equal covariance.
+
+    The rendered Beta footprint is a 2D Beta on the projected covariance S', whose per-axis
+    variance is 9 S' / (2 beta + 4). (The 3D moment, 9 S / (2 beta + 5), is what a volumetric
+    3D Beta would have, but no splat is rendered as one.) Equal to 4/3 at b = 0 in 2D.
+    """
+    beta = beta_of(shapes)
+    return ((2.0 * beta + 4.0) / 9.0) if moment_dim == 2 else ((2.0 * beta + 5.0) / 9.0)
+
+
+def rms_width_ratio(shapes, moment_dim=2) -> np.ndarray:
+    """rho(beta): RMS footprint width relative to b = 0 at equal covariance (1 at b = 0)."""
+    return np.sqrt(moment_variance_inverse(0.0, moment_dim) / moment_variance_inverse(shapes, moment_dim))
+
+
+def slope_ratio(shapes) -> np.ndarray:
+    """c(beta) = S(beta) / S(4), S(beta) = Gamma(beta + 1) / Gamma(beta + 3/2): the total
+    |grad alpha| over the 2D footprint at unit covariance, relative to b = 0."""
+    from math import lgamma
+    lg = np.vectorize(lgamma, otypes=[np.float64])
+    beta = beta_of(shapes)
+    log_s = lg(beta + 1.0) - lg(beta + 1.5)
+    return np.exp(log_s - (lgamma(5.0) - lgamma(5.5)))
+
+
+def host_support(opacity, shapes, kernel_mode, compact) -> np.ndarray:
+    """NumPy twin of `kernel_support`, for the host-side ADC footprint."""
+    opacity = np.asarray(opacity, np.float64)
+    if kernel_mode == KERNEL_BETA_MODE:
+        support = np.full(opacity.shape, 9.0)
+    else:
+        support = np.full(opacity.shape, float(SUPPORT_RADIUS_SQUARED))
+    if compact["enabled"]:
+        support = np.zeros(opacity.shape)
+        visible = opacity > compact["alpha_min"]
+        log_ratio = np.log(opacity[visible] / compact["alpha_min"])
+        if kernel_mode == KERNEL_BETA_MODE:
+            beta = beta_of(np.asarray(shapes)[visible])
+            support[visible] = 9.0 * (1.0 - np.exp(-compact["beta"] * log_ratio / beta))
+        else:
+            support[visible] = np.minimum(float(SUPPORT_RADIUS_SQUARED), compact["beta"] * 2.0 * log_ratio)
+    return support.astype(np.float32)
+
 
 def sigmoid(values: np.ndarray) -> np.ndarray:
     return 1.0 / (1.0 + np.exp(-values))
@@ -385,30 +437,70 @@ def conic_at_centre(log_scale: wp.vec3, quaternion: wp.vec4, camera: wp.mat44, x
     return wp.vec3(c / determinant, -b / determinant, a / determinant)
 
 
+# Kernel selector passed to every shading kernel. 0 = Gaussian exp(-q/2), 1 = Beta (1 - q/9)^beta
+# with beta = 4 exp(b) (Deformable Beta Splatting). Both share one Compact Box rule: a splat is
+# truncated where its alpha falls to o * (alpha_min / o)^compact_beta, so for the Gaussian
+# q_max = 2 compact_beta ln(o / alpha_min) (the course rule) and for the Beta kernel
+# q_max = 9 (1 - (alpha_min / o)^(compact_beta / beta)). Both kernels are cut at the same alpha.
+KERNEL_GAUSSIAN = wp.constant(0)
+KERNEL_BETA = wp.constant(1)
+BETA_SUPPORT_SQUARED = wp.constant(9.0)
+
+
+@wp.func
+def beta_exponent(shape_b: float):
+    return 4.0 * wp.exp(shape_b)
+
+
+@wp.func
+def kernel_support(
+    opacity: float,
+    shape_b: float,
+    kernel_mode: int,
+    compact_enabled: int,
+    compact_beta: float,
+    compact_alpha_min: float,
+):
+    """Squared-Mahalanobis truncation radius q_max for one splat (0 means invisible)."""
+    support = float(SUPPORT_RADIUS_SQUARED)
+    if kernel_mode == KERNEL_BETA:
+        support = float(BETA_SUPPORT_SQUARED)
+    if compact_enabled != 0:
+        support = 0.0
+        if opacity > compact_alpha_min:
+            log_ratio = wp.log(opacity / compact_alpha_min)
+            if kernel_mode == KERNEL_BETA:
+                support = BETA_SUPPORT_SQUARED * (
+                    1.0 - wp.exp(-compact_beta * log_ratio / beta_exponent(shape_b))
+                )
+            else:
+                support = wp.min(float(SUPPORT_RADIUS_SQUARED), compact_beta * 2.0 * log_ratio)
+    return support
+
+
 @wp.func
 def alpha_at_pixel(
     mean: wp.vec3,
     log_scale: wp.vec3,
     quaternion: wp.vec4,
     opacity_logit: float,
+    shape_b: float,
     camera: wp.mat44,
     px: float,
     py: float,
     width: float,
     height: float,
     focal: float,
+    kernel_mode: int,
     compact_enabled: int,
     compact_beta: float,
     compact_alpha_min: float,
 ):
     """Alpha of one splat at one pixel.
 
-    The cutoff is the splat's own compact-support radius, not a fixed 3-sigma disc: a faint splat
-    is truncated sooner because it reaches ALPHA_CUTOFF sooner. This is the same rule the tile
-    workspace already uses to decide which tiles a splat touches, and the same rule the validation
-    rasterizer shades with, so training, tiling, and validation now agree. Passing the compact-box
-    settings in (rather than reading a module constant) keeps `compact_box.enabled: false` working,
-    where the cutoff falls back to the fixed SUPPORT_RADIUS_SQUARED disc.
+    The cutoff is the splat's own compact-support radius (see `kernel_support`), the same rule
+    the tile workspace and the ADC scorer use, so training, tiling and validation agree.
+    `shape_b` is ignored by the Gaussian kernel, so its adjoint there is exactly zero.
     """
     point = camera * wp.vec4(mean[0], mean[1], mean[2], 1.0)
     z = wp.max(point[2], NEAR_PLANE)
@@ -418,17 +510,20 @@ def alpha_at_pixel(
     dx, dy = px - centre_x, py - centre_y
     q = conic[0] * dx * dx + 2.0 * conic[1] * dx * dy + conic[2] * dy * dy
     opacity = 1.0 / (1.0 + wp.exp(-opacity_logit))
-    support = float(SUPPORT_RADIUS_SQUARED)
-    if compact_enabled != 0:
-        support = 0.0
-        if opacity > compact_alpha_min:
-            support = wp.min(
-                float(SUPPORT_RADIUS_SQUARED),
-                compact_beta * 2.0 * wp.log(opacity / compact_alpha_min),
-            )
+    support = kernel_support(
+        opacity, shape_b, kernel_mode, compact_enabled, compact_beta, compact_alpha_min,
+    )
     alpha = float(0.0)
     if support > 0.0 and q <= support:
-        candidate = wp.min(opacity * wp.exp(-0.5 * q), 0.99)
+        profile = float(0.0)
+        if kernel_mode == KERNEL_BETA:
+            # (1 - q/9)^beta as exp(beta * log(.)): pow() with a learnable exponent has a
+            # poorly-behaved adjoint at a zero base. q < 9 inside the support, so base > 0.
+            base = wp.max(1.0 - q / BETA_SUPPORT_SQUARED, 1.0e-12)
+            profile = wp.exp(beta_exponent(shape_b) * wp.log(base))
+        else:
+            profile = wp.exp(-0.5 * q)
+        candidate = wp.min(opacity * profile, 0.99)
         if candidate >= ALPHA_CUTOFF:
             alpha = candidate
     return alpha
@@ -452,6 +547,7 @@ def accumulate_splat_gradient(
     log_scale: wp.vec3,
     quaternion: wp.vec4,
     opacity_logit: float,
+    shape_b: float,
     raw_colour: wp.vec3,
     camera: wp.mat44,
     px: float,
@@ -459,6 +555,7 @@ def accumulate_splat_gradient(
     width: float,
     height: float,
     focal: float,
+    kernel_mode: int,
     compact_enabled: int,
     compact_beta: float,
     compact_alpha_min: float,
@@ -472,6 +569,7 @@ def accumulate_splat_gradient(
     quaternion_grad_flat: wp.array(dtype=wp.float32),
     opacity_grad: wp.array(dtype=wp.float32),
     color_grad_flat: wp.array(dtype=wp.float32),
+    shape_grad: wp.array(dtype=wp.float32),
 ):
     """Push one pixel's gradient onto one splat. Shared by the dense and sparse backward passes
     so the two cannot drift apart."""
@@ -484,12 +582,12 @@ def accumulate_splat_gradient(
     # Alpha: raising alpha adds this splat's colour and dims everything behind it.
     d_alpha = transmittance * wp.dot(colour - remaining_rgb, pixel_grad)
     (
-        adj_mean, adj_log_scale, adj_quaternion, adj_opacity_logit, adj_camera,
+        adj_mean, adj_log_scale, adj_quaternion, adj_opacity_logit, adj_shape_b, adj_camera,
         adj_px, adj_py, adj_width, adj_height, adj_focal,
-        adj_compact_enabled, adj_compact_beta, adj_compact_alpha_min,
+        adj_kernel_mode, adj_compact_enabled, adj_compact_beta, adj_compact_alpha_min,
     ) = wp.grad(alpha_at_pixel)(
-        mean, log_scale, quaternion, opacity_logit, camera, px, py, width, height, focal,
-        compact_enabled, compact_beta, compact_alpha_min,
+        mean, log_scale, quaternion, opacity_logit, shape_b, camera, px, py, width, height,
+        focal, kernel_mode, compact_enabled, compact_beta, compact_alpha_min,
     )
     for k in range(3):
         wp.atomic_add(mean_grad_flat, 3 * splat + k, d_alpha * adj_mean[k])
@@ -497,6 +595,8 @@ def accumulate_splat_gradient(
     for k in range(4):
         wp.atomic_add(quaternion_grad_flat, 4 * splat + k, d_alpha * adj_quaternion[k])
     wp.atomic_add(opacity_grad, splat, d_alpha * adj_opacity_logit)
+    if kernel_mode == KERNEL_BETA:
+        wp.atomic_add(shape_grad, splat, d_alpha * adj_shape_b)
 
 
 @wp.kernel
@@ -506,6 +606,7 @@ def render_forward(
     quaternions: wp.array(dtype=wp.vec4),
     opacity_logits: wp.array(dtype=wp.float32),
     color: wp.array(dtype=wp.vec3),
+    shapes: wp.array(dtype=wp.float32),
     cameras: wp.array(dtype=wp.mat44),
     targets: wp.array(dtype=wp.vec3),
     view_ids: wp.array(dtype=wp.int32),
@@ -519,6 +620,7 @@ def render_forward(
     focal: float,
     view_count: int,
     background: wp.vec3,
+    kernel_mode: int,
     compact_enabled: int,
     compact_beta: float,
     compact_alpha_min: float,
@@ -538,8 +640,9 @@ def render_forward(
     for entry in range(offsets[record], offsets[record + 1]):
         splat = int(pairs[entry] & wp.uint64(0xFFFFFFFF))
         alpha = alpha_at_pixel(means[splat], log_scales[splat], quaternions[splat],
-                               opacity_logits[splat], cameras[view], px, py,
-                               float(width), float(height), focal, compact_enabled, compact_beta, compact_alpha_min)
+                               opacity_logits[splat], shapes[splat], cameras[view], px, py,
+                               float(width), float(height), focal, kernel_mode,
+                               compact_enabled, compact_beta, compact_alpha_min)
         if alpha > 0.0:
             colour = colour_at_view(color[splat])
             rgb = rgb + transmittance * alpha * colour
@@ -559,6 +662,7 @@ def render_backward(
     quaternions: wp.array(dtype=wp.vec4),
     opacity_logits: wp.array(dtype=wp.float32),
     color: wp.array(dtype=wp.vec3),
+    shapes: wp.array(dtype=wp.float32),
     cameras: wp.array(dtype=wp.mat44),
     view_ids: wp.array(dtype=wp.int32),
     offsets: wp.array(dtype=wp.int32),
@@ -571,6 +675,7 @@ def render_backward(
     focal: float,
     image: wp.array(dtype=wp.vec3),
     pixel_gradient: wp.array(dtype=wp.vec3),
+    kernel_mode: int,
     compact_enabled: int,
     compact_beta: float,
     compact_alpha_min: float,
@@ -579,6 +684,7 @@ def render_backward(
     quaternion_grad_flat: wp.array(dtype=wp.float32),
     opacity_grad: wp.array(dtype=wp.float32),
     color_grad_flat: wp.array(dtype=wp.float32),
+    shape_grad: wp.array(dtype=wp.float32),
 ):
     thread = wp.tid()
     pixels = width * height
@@ -602,8 +708,10 @@ def render_backward(
         quaternion = quaternions[splat]
         opacity_logit = opacity_logits[splat]
         camera = cameras[view]
-        alpha = alpha_at_pixel(mean, log_scale, quaternion, opacity_logit, camera,
-                               px, py, float(width), float(height), focal, compact_enabled, compact_beta, compact_alpha_min)
+        shape_b = shapes[splat]
+        alpha = alpha_at_pixel(mean, log_scale, quaternion, opacity_logit, shape_b, camera,
+                               px, py, float(width), float(height), focal, kernel_mode,
+                               compact_enabled, compact_beta, compact_alpha_min)
         if alpha > 0.0:
             colour = colour_at_view(color[splat])
             next_transmittance = transmittance * (1.0 - alpha)
@@ -612,11 +720,12 @@ def render_backward(
             # everything behind this splat (background included), recovered algebraically.
             remaining_rgb = (final_rgb - prefix_rgb - transmittance * alpha * colour) / wp.max(next_transmittance, 1.0e-8)
             accumulate_splat_gradient(
-                splat, mean, log_scale, quaternion, opacity_logit, color[splat], camera,
+                splat, mean, log_scale, quaternion, opacity_logit, shape_b, color[splat], camera,
                 px, py, float(width), float(height), focal,
-                compact_enabled, compact_beta, compact_alpha_min,
+                kernel_mode, compact_enabled, compact_beta, compact_alpha_min,
                 alpha, transmittance, colour, remaining_rgb, pixel_grad,
                 mean_grad_flat, scale_grad_flat, quaternion_grad_flat, opacity_grad, color_grad_flat,
+                shape_grad,
             )
 
             prefix_rgb = prefix_rgb + transmittance * alpha * colour
@@ -683,6 +792,7 @@ def render_sparse_forward(
     quaternions: wp.array(dtype=wp.vec4),
     opacity_logits: wp.array(dtype=wp.float32),
     color: wp.array(dtype=wp.vec3),
+    shapes: wp.array(dtype=wp.float32),
     cameras: wp.array(dtype=wp.mat44),
     view: int,
     sample_xy: wp.array(dtype=wp.vec2i),
@@ -695,6 +805,7 @@ def render_sparse_forward(
     sample_gt: wp.array(dtype=wp.vec3),
     background: wp.vec3,
     num_samples: int,
+    kernel_mode: int,
     compact_enabled: int,
     compact_beta: float,
     compact_alpha_min: float,
@@ -715,8 +826,8 @@ def render_sparse_forward(
         splat = int(pairs[entry] & wp.uint64(0xFFFFFFFF))
         alpha = alpha_at_pixel(
             means[splat], log_scales[splat], quaternions[splat], opacity_logits[splat],
-            camera, px, py, float(width), float(height), focal,
-            compact_enabled, compact_beta, compact_alpha_min,
+            shapes[splat], camera, px, py, float(width), float(height), focal,
+            kernel_mode, compact_enabled, compact_beta, compact_alpha_min,
         )
         if alpha > 0.0:
             colour = colour_at_view(color[splat])
@@ -739,6 +850,7 @@ def render_sparse_backward(
     quaternions: wp.array(dtype=wp.vec4),
     opacity_logits: wp.array(dtype=wp.float32),
     color: wp.array(dtype=wp.vec3),
+    shapes: wp.array(dtype=wp.float32),
     cameras: wp.array(dtype=wp.mat44),
     view: int,
     sample_xy: wp.array(dtype=wp.vec2i),
@@ -751,6 +863,7 @@ def render_sparse_backward(
     rendered_rgb: wp.array(dtype=wp.vec3),
     last_contributor: wp.array(dtype=wp.int32),
     pixel_gradient: wp.array(dtype=wp.vec3),
+    kernel_mode: int,
     compact_enabled: int,
     compact_beta: float,
     compact_alpha_min: float,
@@ -759,6 +872,7 @@ def render_sparse_backward(
     quaternion_grad_flat: wp.array(dtype=wp.float32),
     opacity_grad: wp.array(dtype=wp.float32),
     color_grad_flat: wp.array(dtype=wp.float32),
+    shape_grad: wp.array(dtype=wp.float32),
 ):
     thread = wp.tid()
     record = thread // samples_per_tile
@@ -777,10 +891,11 @@ def render_sparse_backward(
         log_scale = log_scales[splat]
         quaternion = quaternions[splat]
         opacity_logit = opacity_logits[splat]
+        shape_b = shapes[splat]
         alpha = alpha_at_pixel(
-            mean, log_scale, quaternion, opacity_logit, camera,
+            mean, log_scale, quaternion, opacity_logit, shape_b, camera,
             px, py, float(width), float(height), focal,
-            compact_enabled, compact_beta, compact_alpha_min,
+            kernel_mode, compact_enabled, compact_beta, compact_alpha_min,
         )
         if alpha > 0.0:
             colour = colour_at_view(color[splat])
@@ -790,11 +905,12 @@ def render_sparse_backward(
             # everything behind this splat (background included), recovered algebraically.
             remaining_rgb = (final_rgb - prefix_rgb - transmittance * alpha * colour) / wp.max(next_transmittance, 1.0e-8)
             accumulate_splat_gradient(
-                splat, mean, log_scale, quaternion, opacity_logit, color[splat], camera,
+                splat, mean, log_scale, quaternion, opacity_logit, shape_b, color[splat], camera,
                 px, py, float(width), float(height), focal,
-                compact_enabled, compact_beta, compact_alpha_min,
+                kernel_mode, compact_enabled, compact_beta, compact_alpha_min,
                 alpha, transmittance, colour, remaining_rgb, pixel_grad,
                 mean_grad_flat, scale_grad_flat, quaternion_grad_flat, opacity_grad, color_grad_flat,
+                shape_grad,
             )
 
             prefix_rgb = prefix_rgb + transmittance * alpha * colour
@@ -834,6 +950,14 @@ def adam_quaternion_step(
 
 
 @wp.kernel
+def clamp_shapes(shapes: wp.array(dtype=wp.float32), b_min: float, b_max: float):
+    # Projected update: clamp b after Adam's step. Clamping only inside the forward pass would
+    # zero the gradient at the boundary while Adam's momentum kept pushing past it.
+    i = wp.tid()
+    shapes[i] = wp.clamp(shapes[i], b_min, b_max)
+
+
+@wp.kernel
 def constrain_parameters(
     log_scales: wp.array(dtype=wp.vec3),
     color: wp.array(dtype=wp.vec3),
@@ -864,7 +988,7 @@ class SplatOptimizers:
     Every gradient produced by the backward pass is consumed by Adam in the same iteration.
     """
 
-    def __init__(self, trainable, capacity, learning_rates, device):
+    def __init__(self, trainable, capacity, learning_rates, device, shape=None):
         self.device = device
         self.learning_rates = learning_rates
         self.quaternions = trainable.quaternions
@@ -888,13 +1012,20 @@ class SplatOptimizers:
         self.quaternion_grad_flat = wp.zeros(capacity * 4, dtype=wp.float32, device=device)
         self.opacity_grad = wp.zeros(capacity, dtype=wp.float32, device=device)
         self.color_grad_flat = wp.zeros(capacity * 3, dtype=wp.float32, device=device)
+        # Beta shape parameter b. The gradient buffer always exists (the kernels write to it
+        # only in Beta mode); the optimizer exists only when b is learnable.
+        self.shape_grad = wp.zeros(capacity, dtype=wp.float32, device=device)
+        self.shape_optimizer = None
+        if shape is not None:
+            self.shape_optimizer = Adam([shape], lr=learning_rates["shape"])
+            self.optimizers = self.optimizers + (self.shape_optimizer,)
         self.mean_grad = wp.zeros(capacity, dtype=wp.vec3, device=device)
         self.scale_grad = wp.zeros(capacity, dtype=wp.vec3, device=device)
         self.color_grad = wp.zeros(capacity, dtype=wp.vec3, device=device)
 
     def zero_gradients(self):
         for gradient in (self.mean_grad_flat, self.scale_grad_flat, self.quaternion_grad_flat,
-                         self.opacity_grad, self.color_grad_flat):
+                         self.opacity_grad, self.color_grad_flat, self.shape_grad):
             gradient.zero_()
 
     def pack_gradients(self, capacity):
@@ -913,6 +1044,8 @@ class SplatOptimizers:
         self.scale_optimizer.step([self.scale_grad])
         self.opacity_optimizer.step([self.opacity_grad])
         self.color_optimizer.step([self.color_grad])
+        if self.shape_optimizer is not None:
+            self.shape_optimizer.step([self.shape_grad])
         wp.launch(
             adam_quaternion_step,
             dim=capacity,
@@ -943,7 +1076,8 @@ class WarpImageTrainer:
 
     def __init__(self, targets, cameras, focal, scene_radius, capacity, initial_splats,
                  device, seed, init_scene=None, background=(1.0, 1.0, 1.0),
-                 learning_rates=None, tile_pair_capacity=None, training_options=None):
+                 learning_rates=None, tile_pair_capacity=None, training_options=None,
+                 init_shapes=None):
         self.focal = float(focal)
         self.height, self.width = targets.shape[1], targets.shape[2]
         self.capacity, self.device = capacity, wp.get_device(device)
@@ -957,10 +1091,14 @@ class WarpImageTrainer:
             "compact_box": deepcopy(TrainingConfig.DEFAULTS["compact_box"]),
             "multiview_adc": deepcopy(TrainingConfig.DEFAULTS["multiview_adc"]),
             "sparse": deepcopy(TrainingConfig.DEFAULTS["sparse"]),
+            "kernel": deepcopy(TrainingConfig.DEFAULTS["kernel"]),
         }
         if training_options is not None:
             for section, values in training_options.items():
                 self.training_options[section].update(values)
+        kernel = self.training_options["kernel"]
+        self.kernel_mode = KERNEL_BETA_MODE if kernel["type"] == "beta" else KERNEL_GAUSSIAN_MODE
+        self.learn_b = bool(kernel["learn_b"]) and self.kernel_mode == KERNEL_BETA_MODE
         self.sparse_enabled = self.training_options["sparse"]["enabled"]
         self.samples_per_tile = self.training_options["sparse"]["samples_per_tile"]
         self.last_position_learning_rate = self.learning_rates["position_initial"]
@@ -985,10 +1123,11 @@ class WarpImageTrainer:
         self.rng = np.random.default_rng(seed)
         self.scene_radius = scene_radius
 
-        self._init_splats(capacity, initial_splats, init_scene, targets)
+        self._init_splats(capacity, initial_splats, init_scene, targets, init_shapes)
+        self.densify_log = []
         self._init_buffers(cameras, targets, capacity)
 
-    def _init_splats(self, capacity, initial_splats, init_scene, targets):
+    def _init_splats(self, capacity, initial_splats, init_scene, targets, init_shapes=None):
         """Allocate and populate every trainable per-splat parameter array."""
         means = np.zeros((capacity, 3), np.float32)
         log_scales = np.full((capacity, 3), np.log(self.scene_radius / 80.0), np.float32)
@@ -1008,10 +1147,22 @@ class WarpImageTrainer:
         self.active = np.zeros(capacity, bool)
         self.active[:count] = True
         self.active_device = wp.array(self.active.astype(np.int32), dtype=wp.int32, device=self.device)
+        kernel = self.training_options["kernel"]
+        shapes = np.full(capacity, float(kernel["b_init"]) if self.kernel_mode == KERNEL_BETA_MODE else 0.0,
+                         np.float32)
+        if init_shapes is not None:
+            shapes[:count] = np.asarray(init_shapes, np.float32)[:count]
+        if self.kernel_mode == KERNEL_BETA_MODE and kernel["moment_match_init"] and init_shapes is None:
+            # Moment-matched start: scale every initial splat so its rendered footprint has the
+            # same second moment as a Gaussian with the original scales. A Beta splat's 2D
+            # footprint variance is 9 / (2 beta + 4) times its projected covariance, so multiply
+            # the scales by sqrt((2 beta + 4) / 9) (sqrt(4/3) at b = 0).
+            log_scales += np.float32(0.5 * np.log(moment_variance_inverse(shapes, kernel["moment_dim"])))[:, None]
         self.trainable = TrainableGaussianSet(
             means, log_scales, quaternions, opacity, colours,
             self.device, requires_grad=False,
         )
+        self.shape = wp.array(shapes, dtype=wp.float32, device=self.device)
         self.means = self.trainable.means
         self.log_scales = self.trainable.log_scales
         self.quaternions = self.trainable.quaternions
@@ -1036,6 +1187,7 @@ class WarpImageTrainer:
         )
         self.optimizers = SplatOptimizers(
             self.trainable, capacity, self.learning_rates, self.device,
+            shape=self.shape if self.learn_b else None,
         )
         self.last_pair_count = 0
         self.image = wp.empty(
@@ -1073,6 +1225,7 @@ class WarpImageTrainer:
             self.means, self.log_scales, self.quaternions, self.opacity, self.active_device,
             self.cameras, view_ids, self.width, self.height,
             self.focal, self.training_options["compact_box"],
+            shapes=self.shape, kernel_mode=self.kernel_mode,
         )
 
     def _draw_sparse_samples(self, samples_per_tile=None, rng=None) -> np.ndarray:
@@ -1123,7 +1276,7 @@ class WarpImageTrainer:
         wp.launch(
             render_forward,
             dim=len(view_ids) * self.width * self.height,
-            inputs=[self.means, self.log_scales, self.quaternions, self.opacity, self.color,
+            inputs=[self.means, self.log_scales, self.quaternions, self.opacity, self.color, self.shape,
                     self.cameras, self.targets, self.tiles.view_ids, offsets, pairs,
                     self.width, self.height, self.tiles_x, self.tiles_y,
                     TILE, self.focal, len(view_ids), self.background] + self.compact_box_args,
@@ -1142,13 +1295,13 @@ class WarpImageTrainer:
         wp.launch(
             render_backward,
             dim=len(view_ids) * self.width * self.height,
-            inputs=[self.means, self.log_scales, self.quaternions, self.opacity, self.color,
+            inputs=[self.means, self.log_scales, self.quaternions, self.opacity, self.color, self.shape,
                     self.cameras, self.tiles.view_ids, offsets, pairs,
                     self.width, self.height, self.tiles_x, self.tiles_y,
                     TILE, self.focal, self.image, self.pixel_gradient] + self.compact_box_args,
             outputs=[self.optimizers.mean_grad_flat, self.optimizers.scale_grad_flat,
                      self.optimizers.quaternion_grad_flat, self.optimizers.opacity_grad,
-                     self.optimizers.color_grad_flat],
+                     self.optimizers.color_grad_flat, self.optimizers.shape_grad],
             device=self.device,
         )
         self.optimizers.pack_gradients(self.capacity)
@@ -1176,7 +1329,7 @@ class WarpImageTrainer:
             device=self.device,
         )
         shared_inputs = [
-            self.means, self.log_scales, self.quaternions, self.opacity, self.color,
+            self.means, self.log_scales, self.quaternions, self.opacity, self.color, self.shape,
             self.cameras, view, self.sample_xy, offsets, pairs, self.samples_per_tile,
             self.width, self.height, self.focal,
         ]
@@ -1207,7 +1360,7 @@ class WarpImageTrainer:
             outputs=[
                 self.optimizers.mean_grad_flat, self.optimizers.scale_grad_flat,
                 self.optimizers.quaternion_grad_flat, self.optimizers.opacity_grad,
-                self.optimizers.color_grad_flat,
+                self.optimizers.color_grad_flat, self.optimizers.shape_grad,
             ],
             device=self.device,
         )
@@ -1240,7 +1393,7 @@ class WarpImageTrainer:
         wp.launch(
             render_forward,
             dim=self.width * self.height,
-            inputs=[self.means, self.log_scales, self.quaternions, self.opacity, self.color,
+            inputs=[self.means, self.log_scales, self.quaternions, self.opacity, self.color, self.shape,
                     self.cameras, self.targets, self.tiles.view_ids, offsets, pairs,
                     self.width, self.height, self.tiles_x, self.tiles_y, TILE, self.focal, 1,
                     self.background] + self.compact_box_args,
@@ -1283,7 +1436,8 @@ class WarpImageTrainer:
         reached through `__getattr__` by the SH trainers) so the values come from one place.
         """
         compact = self.training_options["compact_box"]
-        return [int(compact["enabled"]), float(compact["beta"]), float(compact["alpha_min"])]
+        return [self.kernel_mode, int(compact["enabled"]), float(compact["beta"]),
+                float(compact["alpha_min"])]
 
     def multiview_adc_scores(self, candidate_indices, view_ids, render_view=None):
         """Reference multi-view ADC scorer for a bounded set of candidate splats.
@@ -1308,13 +1462,9 @@ class WarpImageTrainer:
         targets = self.targets_host
         compact = self.training_options["compact_box"]
         opacity = sigmoid(self.opacity.numpy()[candidate_indices])
-        support = np.full(len(candidate_indices), 9.0, np.float32)
-        if compact["enabled"]:
-            support.fill(0.0)
-            visible_opacity = opacity > compact["alpha_min"]
-            support[visible_opacity] = (
-                compact["beta"] * 2.0 * np.log(opacity[visible_opacity] / compact["alpha_min"])
-            )
+        support = host_support(
+            opacity, self.shape.numpy()[candidate_indices], self.kernel_mode, compact,
+        )
 
         densify_score = np.zeros(len(candidate_indices), np.float32)
         low_error_score = np.zeros(len(candidate_indices), np.float32)
@@ -1410,6 +1560,11 @@ class WarpImageTrainer:
             ],
             device=self.device,
         )
+        if self.learn_b:
+            kernel = self.training_options["kernel"]
+            wp.launch(clamp_shapes, dim=self.capacity,
+                      inputs=[self.shape, float(kernel["b_min"]), float(kernel["b_max"])],
+                      device=self.device)
         mean_gradients = self.optimizers.mean_grad.numpy() if download_gradients else None
         wp.synchronize_device(self.device)
         self.last_timings["device"] += perf_counter() - device_started
@@ -1438,7 +1593,17 @@ class WarpImageTrainer:
         color = self.color.numpy()
         adc = self.training_options["multiview_adc"]
         prune_mask = (opacity < PRUNE_OPACITY_FLOOR) & self.active
+        shapes = self.shape.numpy()
+        kernel = self.training_options["kernel"]
+        kernel_aware = (
+            self.kernel_mode == KERNEL_BETA_MODE and kernel["densifier"] == "kernel_aware"
+        )
+        active_before = int(self.active.sum())
         scores = np.linalg.norm(gradients, axis=1)
+        if kernel_aware:
+            # Arm C ranking: divide by c(beta), the footprint's total |grad alpha| relative to
+            # b = 0, so a splat is not favoured only because its profile collects more gradient.
+            scores = scores / slope_ratio(shapes)
         parents = [i for i in np.argsort(scores)[::-1] if self.active[i]]
         if adc["enabled"] and view_ids is not None:
             limit = min(len(parents), int(adc["candidate_limit"]))
@@ -1485,11 +1650,18 @@ class WarpImageTrainer:
         if len(chosen_parents):
             self.active[chosen_children] = True
             parent_scales = np.exp(log_scales[chosen_parents])
-            is_split = parent_scales.max(axis=1) > split_size
+            parent_extent = parent_scales.max(axis=1)
+            if kernel_aware:
+                # Arm C split test on the RMS footprint width rather than the raw scale.
+                parent_extent = parent_extent * rms_width_ratio(
+                    shapes[chosen_parents], kernel["moment_dim"],
+                )
+            is_split = parent_extent > split_size
             # Every child inherits these regardless of branch.
             quaternions[chosen_children] = quaternions[chosen_parents]
             opacity_logits[chosen_children] = opacity_logits[chosen_parents]
             color[chosen_children] = color[chosen_parents]
+            shapes[chosen_children] = shapes[chosen_parents]
             # Clone is the default: a small splat is copied exactly. The gradient separates the
             # pair, so no displacement is invented and no opacity is thrown away.
             means[chosen_children] = means[chosen_parents]
@@ -1521,8 +1693,23 @@ class WarpImageTrainer:
             (self.quaternions, quaternions, wp.vec4),
             (self.opacity, opacity_logits, wp.float32),
             (self.color, color, wp.vec3),
+            (self.shape, shapes, wp.float32),
         ):
             array.assign(wp.array(values.astype(np.float32), dtype=dtype, device=self.device))
+        # H5 bookkeeping: growth, split/clone mix, and which shapes the densifier selects.
+        bins = np.linspace(kernel["b_min"], kernel["b_max"], 17)
+        n_split = int(is_split.sum()) if len(chosen_parents) else 0
+        self.densify_log.append({
+            "active_before": active_before,
+            "pruned": int(prune_mask.sum()),
+            "children": int(len(chosen_parents)),
+            "split": n_split,
+            "clone": int(len(chosen_parents)) - n_split,
+            "active_after": int(self.active.sum()),
+            "parent_b_hist": np.histogram(shapes[chosen_parents], bins)[0].tolist()
+            if len(chosen_parents) else [0] * 16,
+            "active_b_hist": np.histogram(shapes[self.active], bins)[0].tolist(),
+        })
         if children_to_add:
             # Only a densify event needs this. A late-prune-only event passes fraction == 0.0, so
             # it adds no children -- resetting there would wipe Adam's moments for the entire
@@ -1548,7 +1735,12 @@ class WarpImageTrainer:
         loop calls it unconditionally rather than testing for a version-specific method, so the
         loop needs no vocabulary for what those parameters happen to be.
         """
-        return []
+        if self.kernel_mode != KERNEL_BETA_MODE:
+            return []
+        sidecar = Path(path).with_suffix(".beta.npz")
+        np.savez(sidecar, b=self.shape.numpy()[np.flatnonzero(self.active)],
+                 kernel="beta", learn_b=self.learn_b)
+        return [sidecar]
 
     def gaussian_set(self):
         active = np.flatnonzero(self.active)
@@ -1823,6 +2015,7 @@ def main() -> None:
             "compact_box": compact,
             "multiview_adc": adc,
             "sparse": sparse,
+            "kernel": config["kernel"],
         },
     )
     output = png_output_path(paths["output"])
