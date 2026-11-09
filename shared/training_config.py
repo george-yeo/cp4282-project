@@ -110,6 +110,9 @@ class TrainingConfig:
             "b_max": 2.0,
             # Scale initial Beta splats so their footprint has the Gaussian's second moment.
             "moment_match_init": True,
+            # "truncated": match the footprint the Compact Box actually renders, at each splat's
+            # opacity. "untruncated": the closed-form sqrt((2 beta + 4) / 9).
+            "moment_match": "truncated",
             # "course" or "kernel_aware" (arm C: rho(beta) split test, c(beta) ranking).
             "densifier": "course",
             # 2 = moments of the rendered 2D footprint (default); 3 = the proposal's 3D moments.
@@ -211,6 +214,8 @@ class TrainingConfig:
             raise ValueError("kernel.type must be 'gaussian' or 'beta'.")
         if kernel["densifier"] not in ("course", "kernel_aware"):
             raise ValueError("kernel.densifier must be 'course' or 'kernel_aware'.")
+        if kernel["moment_match"] not in ("truncated", "untruncated"):
+            raise ValueError("kernel.moment_match must be 'truncated' or 'untruncated'.")
         if kernel["moment_dim"] not in (2, 3):
             raise ValueError("kernel.moment_dim must be 2 or 3.")
         for name in ("learn_b", "moment_match_init"):

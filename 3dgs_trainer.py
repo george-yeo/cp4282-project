@@ -125,6 +125,38 @@ def slope_ratio(shapes) -> np.ndarray:
     return np.exp(log_s - (lgamma(5.0) - lgamma(5.5)))
 
 
+def truncated_footprint_moment(opacity, shapes, kernel_mode, compact, samples=4096) -> np.ndarray:
+    """Second moment E[r^2] of the footprint actually rendered, in units of the projected
+    covariance: the kernel profile integrated radially in 2D up to its Compact Box cut.
+
+    Under the course Compact Box both kernels are cut where alpha = o (alpha_min / o)^beta_cb,
+    which is far inside the kernel for low-opacity splats, so the untruncated ratio 4/3 is not
+    what the renderer sees: the matching factor is ~1.09 at o = 1 and ~0.99 at o = 0.018.
+    """
+    opacity = np.atleast_1d(np.asarray(opacity, np.float64))
+    shapes = np.broadcast_to(np.asarray(shapes, np.float64), opacity.shape)
+    support = host_support(opacity, shapes, kernel_mode, compact).astype(np.float64)
+    u = (np.arange(samples) + 0.5) / samples  # r = sqrt(q_max) * u, midpoint rule
+    q = support[:, None] * u[None, :] ** 2
+    if kernel_mode == KERNEL_BETA_MODE:
+        profile = np.clip(1.0 - q / 9.0, 0.0, None) ** beta_of(shapes)[:, None]
+    else:
+        profile = np.exp(-0.5 * q)
+    weight = profile * u[None, :]
+    moment = support * (weight * u[None, :] ** 2).sum(1) / np.maximum(weight.sum(1), 1e-30)
+    return np.where(support > 0.0, moment, np.nan)
+
+
+def moment_match_scale(opacity, shapes, compact, mode="truncated") -> np.ndarray:
+    """Factor k for a Beta splat's scales so its rendered footprint has the second moment of a
+    Gaussian splat with the original scales. mode='untruncated' gives sqrt((2 beta + 4) / 9)."""
+    if mode == "untruncated":
+        return np.sqrt(moment_variance_inverse(shapes, 2)) * np.ones_like(np.asarray(opacity, np.float64))
+    gauss = truncated_footprint_moment(opacity, 0.0, KERNEL_GAUSSIAN_MODE, compact)
+    beta = truncated_footprint_moment(opacity, shapes, KERNEL_BETA_MODE, compact)
+    return np.nan_to_num(np.sqrt(gauss / beta), nan=1.0)
+
+
 def host_support(opacity, shapes, kernel_mode, compact) -> np.ndarray:
     """NumPy twin of `kernel_support`, for the host-side ADC footprint."""
     opacity = np.asarray(opacity, np.float64)
@@ -1154,10 +1186,16 @@ class WarpImageTrainer:
             shapes[:count] = np.asarray(init_shapes, np.float32)[:count]
         if self.kernel_mode == KERNEL_BETA_MODE and kernel["moment_match_init"] and init_shapes is None:
             # Moment-matched start: scale every initial splat so its rendered footprint has the
-            # same second moment as a Gaussian with the original scales. A Beta splat's 2D
-            # footprint variance is 9 / (2 beta + 4) times its projected covariance, so multiply
-            # the scales by sqrt((2 beta + 4) / 9) (sqrt(4/3) at b = 0).
-            log_scales += np.float32(0.5 * np.log(moment_variance_inverse(shapes, kernel["moment_dim"])))[:, None]
+            # same second moment as a Gaussian with the original scales. Untruncated, a Beta
+            # splat's 2D footprint variance is 9 / (2 beta + 4) times its projected covariance
+            # (factor sqrt(4/3) at b = 0); see truncated_footprint_moment for the default.
+            # Matched on the truncated footprint at each splat's opacity by default
+            # (kernel.moment_match), since that is what the Compact Box renders.
+            init_opacity = 1.0 / (1.0 + np.exp(-opacity.astype(np.float64)))
+            factor = moment_match_scale(init_opacity, shapes, self.training_options["compact_box"],
+                                        kernel["moment_match"])
+            self.init_scale_factor = factor[:count]
+            log_scales += np.log(factor).astype(np.float32)[:, None]
         self.trainable = TrainableGaussianSet(
             means, log_scales, quaternions, opacity, colours,
             self.device, requires_grad=False,
