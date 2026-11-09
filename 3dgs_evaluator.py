@@ -121,10 +121,24 @@ def build_trainer(args, scene, targets, cameras, focal, distance, device):
     background = (
         np.ones(3, np.float32) if args.background == "white" else np.zeros(3, np.float32)
     )
+    # A Beta-kernel model writes `<ply-stem>.beta.npz` with its per-splat b; render it with the
+    # Beta kernel. No sidecar means the course Gaussian kernel.
+    beta_path = args.ply.with_suffix(".beta.npz")
+    training_options, init_shapes = None, None
+    if beta_path.exists():
+        with np.load(beta_path) as beta_file:
+            init_shapes = np.asarray(beta_file["b"], np.float32)
+        if init_shapes.shape != (capacity,):
+            raise ValueError(f"{beta_path} has {init_shapes.shape} b values for {capacity} splats.")
+        training_options = {"kernel": {"type": "beta", "learn_b": False,
+                                       "moment_match_init": False}}
+        if args.override_b is not None:
+            init_shapes = np.full(capacity, args.override_b, np.float32)
     base = WarpImageTrainer(
         targets, cameras, focal, distance * 0.35, capacity, capacity, device, 0,
         init_scene=scene, background=background,
         tile_pair_capacity=args.tile_pair_capacity,
+        training_options=training_options, init_shapes=init_shapes,
     )
     sh_path = args.sh_npz if args.sh_npz is not None else args.ply.with_suffix(".sh.npz")
     if args.sh_degree == 2 and not sh_path.exists():
@@ -181,6 +195,8 @@ def evaluate(args: argparse.Namespace) -> None:
     targets, cameras, focal, distance, frame_paths = load_views(
         data, width, height, background, manifest_name=args.manifest
     )
+    if args.max_views:
+        targets, cameras, frame_paths = targets[:args.max_views], cameras[:args.max_views], frame_paths[:args.max_views]
     trainer, using_sh = build_trainer(args, scene, targets, cameras, focal, distance, device)
 
     wanted = list(dict.fromkeys(args.metrics))
@@ -192,6 +208,7 @@ def evaluate(args: argparse.Namespace) -> None:
         f"Evaluating {len(scene.means):,} splats from {args.ply} against {len(frame_paths)} "
         f"view(s) in {manifest_path} at {width}x{height} on Warp {device}; "
         f"appearance={'degree-2 SH' if using_sh else 'degree-0 RGB'}; "
+        f"kernel={'beta' if args.ply.with_suffix('.beta.npz').exists() else 'gaussian'}; "
         f"metrics={', '.join(wanted)}.",
         flush=True,
     )
@@ -279,6 +296,11 @@ def main() -> None:
         help="Sidecar path. Default: the PLY's name with a .sh.npz suffix.",
     )
     parser.add_argument("--tile-pair-capacity", type=int, default=None)
+    parser.add_argument("--max-views", type=int, default=0, help="Evaluate only the first N views.")
+    parser.add_argument(
+        "--override-b", type=float, default=None,
+        help="Beta models only: render with every b set to this value (ablation renders).",
+    )
     parser.add_argument("--output-dir", type=Path, default=Path("outputs/eval"))
     parser.add_argument("--csv", type=Path, default=Path("outputs/eval/metrics.csv"))
     evaluate(parser.parse_args())

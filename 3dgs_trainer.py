@@ -2158,6 +2158,9 @@ def run_training(
         trainer.gaussian_set().to_ply(initial_ply)
         trainer.save_sidecars(initial_ply)
     training_started = perf_counter()
+    # Run log for the analysis (growth curves, the "still improving?" rule, ms/iter): one record
+    # per eval tick, plus the trainer's per-densify-event log, written beside the output.
+    eval_log = []
     for iteration in range(1, training["iterations"] + 1):
         completed_iteration = iteration
         view_ids = np.asarray([rng.integers(len(targets))], dtype=np.int32)
@@ -2215,6 +2218,11 @@ def run_training(
             fixed_eval_loss = trainer.evaluate(eval_view_ids)
             fixed_eval_iteration = iteration
             fixed_eval_ema.update(fixed_eval_loss)
+            eval_log.append({
+                "iteration": iteration, "fixed_eval": float(fixed_eval_loss),
+                "fixed_eval_ema": float(fixed_eval_ema.value), "active": int(trainer.active.sum()),
+                "seconds": perf_counter() - training_started,
+            })
             # Convergence bookkeeping only advances on a true eval_every tick. A snapshot alone
             # still needs a fresh fixed_eval to render and log, but it must not change when
             # training stops -- otherwise snapshot_every silently reshapes the stopping schedule.
@@ -2259,6 +2267,32 @@ def run_training(
     for sidecar in trainer.save_sidecars(output):
         print(f"Saved {sidecar}", flush=True)
     elapsed = perf_counter() - training_started
+    peak_bytes = None
+    try:
+        if wp.get_device(device).is_cuda:
+            peak_bytes = int(wp.get_mempool_used_mem_high(device))
+    except Exception:  # mempool stats are unavailable on some drivers/devices
+        peak_bytes = None
+    log_densify = getattr(trainer, "densify_log", [])
+    run_log = {
+        "iterations": completed_iteration,
+        "seconds": elapsed,
+        "ms_per_iteration": 1000.0 * elapsed / max(1, completed_iteration),
+        "peak_mempool_bytes": peak_bytes,
+        "final_active": int(trainer.active.sum()),
+        "eval": eval_log,
+        "densify": log_densify,
+    }
+    if getattr(trainer, "kernel_mode", 0) == KERNEL_BETA_MODE:
+        b = trainer.shape.numpy()[trainer.active]
+        kernel = trainer.training_options["kernel"]
+        run_log["b_summary"] = {
+            "mean": float(b.mean()), "std": float(b.std()),
+            "percentiles": np.percentile(b, [1, 5, 25, 50, 75, 95, 99]).tolist(),
+            "at_min": float(np.mean(b <= kernel["b_min"] + 1e-4)),
+            "at_max": float(np.mean(b >= kernel["b_max"] - 1e-4)),
+        }
+    output.with_suffix(".runlog.json").write_text(json.dumps(run_log))
     print(
         f"Training finished after {completed_iteration:,} iterations in "
         f"{elapsed:.2f}s ({elapsed / max(1, completed_iteration):.3f}s/iter).",
