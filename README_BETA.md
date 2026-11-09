@@ -1,19 +1,19 @@
 # CP4282 Beta-kernel study: code notes
 
-Built on the AS2 starter (`weitsang/cp4282-as2` @ 9e74d1e). `git log` shows each change as its own commit.
+Built on George's AS2 submission (`george-yeo/cp4282-as2`, branch `main`, on top of the course starter `weitsang/cp4282-as2` @ 9e74d1e). Branch `beta` adds one commit per change; `git log main..beta` lists them.
 
 ## What changed
 
 | File | Change |
 |---|---|
-| `3dgs_trainer.py` | Dense + sparse backward kernels (one shared adjoint helper). Beta kernel `(1 - q/9)^(4e^b)` in `alpha_at_pixel`. Per-splat `b` with its own Adam (`learning_rates.shape`) and a projected clamp to `[b_min, b_max]`. Moment-matched init. Children inherit `b`. Arm C densifier. Per-densify-event log. `.beta.npz` sidecar. `final.runlog.json`. |
+| `3dgs_trainer.py` | AS2 backward factored into one shared adjoint helper (inclusive colour clamp). Beta kernel `(1 - q/9)^(4e^b)` in `alpha_at_pixel`. Per-splat `b` with its own Adam (`learning_rates.shape`) and a projected clamp to `[b_min, b_max]`. Moment-matched init. Children inherit `b`. Arm C densifier. Per-densify-event log. `.beta.npz` sidecar. `final.runlog.json`. |
 | `gaussian_first_tile_workspace_gpu.py` | Tile bounds use the same per-splat support as shading (`kernel_support`). |
 | `shared/training_config.py` | `kernel:` section (`type`, `learn_b`, `b_init`, `b_min/max`, `moment_match_init`, `moment_match`, `densifier`, `moment_dim`) and `learning_rates.shape`. |
 | `3dgs_evaluator.py` | Renders with the Beta kernel when `<ply>.beta.npz` exists. `--override-b` sets every b to one value; `--max-views N` evaluates only the first N views. |
 | `beta_runs.py` | Run driver and queues (q1–q4), `pick-lr`, `sigma`, `status`, `summary`. |
 | `checks/` | Gradient and equivalence gates (below). |
 
-Arm A uses exactly the course kernel. Its gradients are bit-identical to the plain AS2 backward pass (same output from `3dgs_gradient_check_gpu.py` before and after the Beta change).
+Arm A uses exactly the course kernel. Its gradients are bit-identical before and after the Beta change (same output from `3dgs_gradient_check_gpu.py`). They also match the AS2 submission, except that a colour channel sitting exactly at 0 or 1 now still receives gradient.
 
 ## Design decisions that differ from the proposal
 
