@@ -445,6 +445,60 @@ def colour_at_view(
     )
 
 
+@wp.func
+def accumulate_splat_gradient(
+    splat: int,
+    mean: wp.vec3,
+    log_scale: wp.vec3,
+    quaternion: wp.vec4,
+    opacity_logit: float,
+    raw_colour: wp.vec3,
+    camera: wp.mat44,
+    px: float,
+    py: float,
+    width: float,
+    height: float,
+    focal: float,
+    compact_enabled: int,
+    compact_beta: float,
+    compact_alpha_min: float,
+    alpha: float,
+    transmittance: float,
+    colour: wp.vec3,
+    remaining_rgb: wp.vec3,
+    pixel_grad: wp.vec3,
+    mean_grad_flat: wp.array(dtype=wp.float32),
+    scale_grad_flat: wp.array(dtype=wp.float32),
+    quaternion_grad_flat: wp.array(dtype=wp.float32),
+    opacity_grad: wp.array(dtype=wp.float32),
+    color_grad_flat: wp.array(dtype=wp.float32),
+):
+    """Push one pixel's gradient onto one splat. Shared by the dense and sparse backward passes
+    so the two cannot drift apart."""
+    # Colour: d pixel / d c = T * alpha. constrain_parameters keeps colour in [0, 1], so the
+    # clamp in colour_at_view is the identity there; a channel strictly outside passes nothing.
+    weight = transmittance * alpha
+    for k in range(3):
+        if raw_colour[k] >= 0.0 and raw_colour[k] <= 1.0:
+            wp.atomic_add(color_grad_flat, 3 * splat + k, weight * pixel_grad[k])
+    # Alpha: raising alpha adds this splat's colour and dims everything behind it.
+    d_alpha = transmittance * wp.dot(colour - remaining_rgb, pixel_grad)
+    (
+        adj_mean, adj_log_scale, adj_quaternion, adj_opacity_logit, adj_camera,
+        adj_px, adj_py, adj_width, adj_height, adj_focal,
+        adj_compact_enabled, adj_compact_beta, adj_compact_alpha_min,
+    ) = wp.grad(alpha_at_pixel)(
+        mean, log_scale, quaternion, opacity_logit, camera, px, py, width, height, focal,
+        compact_enabled, compact_beta, compact_alpha_min,
+    )
+    for k in range(3):
+        wp.atomic_add(mean_grad_flat, 3 * splat + k, d_alpha * adj_mean[k])
+        wp.atomic_add(scale_grad_flat, 3 * splat + k, d_alpha * adj_log_scale[k])
+    for k in range(4):
+        wp.atomic_add(quaternion_grad_flat, 4 * splat + k, d_alpha * adj_quaternion[k])
+    wp.atomic_add(opacity_grad, splat, d_alpha * adj_opacity_logit)
+
+
 @wp.kernel
 def render_forward(
     means: wp.array(dtype=wp.vec3),
@@ -554,83 +608,16 @@ def render_backward(
             colour = colour_at_view(color[splat])
             next_transmittance = transmittance * (1.0 - alpha)
 
-            # TODO: accumulate this splat's share of the gradient.
-            #
-            # The forward pass composited front to back:
-            #     image = sum over splats of (transmittance * alpha * colour)
-            #             + background * final transmittance
-            # and `pixel_grad` holds d(loss)/d(this pixel). Walk the same splats in the same
-            # order and push that pixel gradient back onto the parameters.
-            #
-            # Two adjoints to derive:
-            #   colour  -- how much of the pixel gradient this splat's colour receives, given
-            #              the transmittance in front of it and its own alpha. Note the forward
-            #              clamps colour to [0, 1], so a channel sitting at the clamp passes
-            #              nothing back.
-            #   alpha   -- raising alpha adds this splat's colour and removes whatever the
-            #              splats behind it contribute. `remaining_rgb` below is that trailing
-            #              contribution, recovered from the final pixel value rather than by a
-            #              second pass.
-            #
-            # From the alpha adjoint, `wp.grad(alpha_at_pixel)(...)` gives the adjoints of the
-            # splat parameters. It returns one value per argument of `alpha_at_pixel`, and a
-            # Warp kernel cannot star-unpack, so every returned adjoint needs a name even where
-            # it is unused. Scale each by the alpha adjoint before accumulating.
-            #
-            # Write results with `wp.atomic_add` into mean_grad_flat, scale_grad_flat,
-            # quaternion_grad_flat, opacity_grad and color_grad_flat -- many pixels touch the
-            # same splat concurrently. The flat buffers are component-major: splat i's mean
-            # occupies indices 3*i, 3*i+1, 3*i+2, and its quaternion 4*i .. 4*i+3.
-            #
-            # remaining_rgb = (final_rgb - prefix_rgb - transmittance * alpha * colour) / wp.max(next_transmittance, 1.0e-8)
-            
-            # for colouur
-            colour_adjoint = transmittance * alpha * pixel_grad
-            raw_colour = color[splat]
-
-            for k in range(3):
-                if raw_colour[k] > 0.0 and raw_colour[k] < 1.0: # no contribution if clamped
-                    wp.atomic_add(color_grad_flat, 3 * splat + k, colour_adjoint[k])
-
-            # for alpha
+            # Front-to-back adjoint. Pixel = prefix + T*alpha*c + T*(1-alpha)*R, where R is
+            # everything behind this splat (background included), recovered algebraically.
             remaining_rgb = (final_rgb - prefix_rgb - transmittance * alpha * colour) / wp.max(next_transmittance, 1.0e-8)
-            alpha_adjoint = transmittance * wp.dot(pixel_grad, colour - remaining_rgb)
-            (
-                d_mean,
-                d_log_scale,
-                d_quat,
-                d_opacity,
-                d_cam,
-                d_px,
-                d_py,
-                d_w,
-                d_h,
-                d_focal,
-                d_ce,
-                d_cb,
-                d_cam_min) = wp.grad(alpha_at_pixel)(
-                    mean,
-                    log_scale,
-                    quaternion,
-                    opacity_logit,
-                    camera,
-                    px,
-                    py,
-                    float(width),
-                    float(height),
-                    focal,
-                    compact_enabled,
-                    compact_beta,
-                    compact_alpha_min)
-
-            for k in range(3):
-                wp.atomic_add(mean_grad_flat, 3 * splat + k, alpha_adjoint * d_mean[k])
-                wp.atomic_add(scale_grad_flat, 3 * splat + k, alpha_adjoint * d_log_scale[k])
-                
-            for k in range(4):
-                wp.atomic_add(quaternion_grad_flat, 4 * splat + k, alpha_adjoint * d_quat[k])
-
-            wp.atomic_add(opacity_grad, splat, alpha_adjoint * d_opacity)
+            accumulate_splat_gradient(
+                splat, mean, log_scale, quaternion, opacity_logit, color[splat], camera,
+                px, py, float(width), float(height), focal,
+                compact_enabled, compact_beta, compact_alpha_min,
+                alpha, transmittance, colour, remaining_rgb, pixel_grad,
+                mean_grad_flat, scale_grad_flat, quaternion_grad_flat, opacity_grad, color_grad_flat,
+            )
 
             prefix_rgb = prefix_rgb + transmittance * alpha * colour
             transmittance = next_transmittance
@@ -799,64 +786,16 @@ def render_sparse_backward(
             colour = colour_at_view(color[splat])
             next_transmittance = transmittance * (1.0 - alpha)
 
-            # TODO: accumulate this splat's share of the gradient, exactly as in
-            # `render_backward` above. The compositing algebra is identical; only the addressing
-            # differs, because one thread here owns one sampled pixel rather than one dense
-            # pixel, and the walk stops at `last_contributor[thread]` -- the entry where the
-            # forward pass stopped -- instead of at the end of the tile's splat list.
-            #
-            # Getting this to agree with the dense kernel matters, and full coverage is how you
-            # check it: at `sparse.samples_per_tile == TILE * TILE` every pixel in every tile is
-            # sampled exactly once, so the sparse loss and every sparse gradient buffer must match
-            # the dense ones.
-
-            # for colouur
-            colour_adjoint = transmittance * alpha * pixel_grad
-            raw_colour = color[splat]
-
-            for k in range(3):
-                if raw_colour[k] > 0.0 and raw_colour[k] < 1.0: # no contribution if clamped
-                    wp.atomic_add(color_grad_flat, 3 * splat + k, colour_adjoint[k])
-
-            # for alpha
+            # Front-to-back adjoint. Pixel = prefix + T*alpha*c + T*(1-alpha)*R, where R is
+            # everything behind this splat (background included), recovered algebraically.
             remaining_rgb = (final_rgb - prefix_rgb - transmittance * alpha * colour) / wp.max(next_transmittance, 1.0e-8)
-            alpha_adjoint = transmittance * wp.dot(pixel_grad, colour - remaining_rgb)
-            (
-                d_mean,
-                d_log_scale,
-                d_quat,
-                d_opacity,
-                d_cam,
-                d_px,
-                d_py,
-                d_w,
-                d_h,
-                d_focal,
-                d_ce,
-                d_cb,
-                d_cam_min) = wp.grad(alpha_at_pixel)(
-                    mean,
-                    log_scale,
-                    quaternion,
-                    opacity_logit,
-                    camera,
-                    px,
-                    py,
-                    float(width),
-                    float(height),
-                    focal,
-                    compact_enabled,
-                    compact_beta,
-                    compact_alpha_min)
-
-            for k in range(3):
-                wp.atomic_add(mean_grad_flat, 3 * splat + k, alpha_adjoint * d_mean[k])
-                wp.atomic_add(scale_grad_flat, 3 * splat + k, alpha_adjoint * d_log_scale[k])
-                
-            for k in range(4):
-                wp.atomic_add(quaternion_grad_flat, 4 * splat + k, alpha_adjoint * d_quat[k])
-
-            wp.atomic_add(opacity_grad, splat, alpha_adjoint * d_opacity)
+            accumulate_splat_gradient(
+                splat, mean, log_scale, quaternion, opacity_logit, color[splat], camera,
+                px, py, float(width), float(height), focal,
+                compact_enabled, compact_beta, compact_alpha_min,
+                alpha, transmittance, colour, remaining_rgb, pixel_grad,
+                mean_grad_flat, scale_grad_flat, quaternion_grad_flat, opacity_grad, color_grad_flat,
+            )
 
             prefix_rgb = prefix_rgb + transmittance * alpha * colour
             transmittance = next_transmittance
