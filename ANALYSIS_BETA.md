@@ -1,6 +1,6 @@
 # Beta kernel vs Gaussian: analysis points
 
-Findings from the pilot, q1, q2, q3 and the 30k side check. Numbers come from `runs/summary.csv`,
+Findings from the pilot, q1, q2, q3, q4 and the 30k side check. Numbers come from `runs/summary.csv`,
 the per-run `DONE` files and `runs_30k/`. The protocol and arm definitions are in `README_BETA.md`.
 
 Unless stated otherwise: test split, 10,000 splats, dense loss, 20,000 iterations, random init
@@ -181,9 +181,32 @@ gets about twice the optimisation, so the +0.6–0.7 dB is extra training, not t
 - The paper's numbers above were read from the arXiv HTML and should be checked against the PDF
   before they are quoted.
 
+## 11. Fewer training views (q4): the lead holds at 50 views, not reliably at 25
+
+Seed 0, 10k splats, test split:
+
+| Scene | Views | A | B | B − A (dB) | B − A LPIPS |
+|---|---|---|---|---|---|
+| lego | 25 | 22.71 | 23.09 | +0.38 | −0.0038 |
+| lego | 50 | 26.15 | 26.96 | +0.81 | −0.0087 |
+| lego | 100 | 27.24 | 27.71 | +0.47 | −0.0048 |
+| ficus | 25 | 20.26 | 18.99 | **−1.27** | **+0.0666** |
+| ficus | 50 | 24.95 | 25.80 | +0.85 | −0.0101 |
+| ficus | 100 | 26.69 | 27.50 | +0.81 | −0.0063 |
+
+- At 50 views B's lead is at least as large as at 100 views on both scenes.
+- At 25 views the result depends on the scene: lego keeps a lead, ficus loses 1.27 dB.
+- Both ficus 25-view runs overfit: the held-out loss stops improving after about iteration
+  2,200 while training continues. A recovers slowly (0.0101 → 0.0079); B does not
+  (0.0104 → 0.0102).
+- Possible reading: with too few views, the extra per-splat freedom overfits thin geometry. It
+  is one seed in a regime where both arms have collapsed by 6–8 dB, so treat the ficus 25-view
+  loss as an anomaly to report, not as a finding.
+
 ## Limits of the evidence
 
-- Two seeds per scene (four on lego) for the main table; one seed for B0, C and the budget sweep.
+- Two seeds per scene (four on lego) for the main table; one seed for B0, C, the budget sweep
+  and the view-count sweep.
 - One capacity (10k) for the main table; the capacity trend rests on lego and ficus.
 - Random init and 400 px only. No real-scene data.
 - b_lr was tuned on lego val only.
