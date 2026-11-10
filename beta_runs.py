@@ -41,6 +41,8 @@ ROOT = Path(__file__).resolve().parent
 SCENES = ["chair", "drums", "ficus", "hotdog", "lego", "materials", "mic", "ship"]
 LR_SWEEP = [0.0005, 0.001, 0.002]
 DEFAULT_B_LR = 0.001
+INITIAL_SPLATS = 1000  # random-init count, identical in every run (room to grow even at 25% budget)
+DENSIFY_FRACTION = 0.2
 
 ARMS = {
     "A": {"type": "gaussian"},
@@ -81,6 +83,10 @@ def make_config(spec: dict, run_dir: Path, args) -> dict:
     if spec.get("views", 100) != 100:
         scene_data = subset_views(scene_data, run_dir / "data", spec["views"])
     capacity = int(round(args.capacity * spec.get("budget", 1.0)))
+    if args.initial_splats > capacity:
+        raise ValueError(f"{run_name(spec)}: initial_splats {args.initial_splats} exceeds capacity {capacity}")
+    if args.loss not in ("sparse", "dense"):
+        raise ValueError(f"loss must be 'sparse' or 'dense', got {args.loss!r}")
     kernel = {
         "type": "gaussian", "learn_b": True, "b_init": 0.0, "b_min": -2.0, "b_max": 2.0,
         "moment_match_init": True, "moment_match": args.moment_match,
@@ -96,8 +102,12 @@ def make_config(spec: dict, run_dir: Path, args) -> dict:
                   "init_ply": init_ply},
         "runtime": {"arch": args.arch, "seed": int(spec["seed"])},
         "model": {"width": args.resolution, "height": args.resolution, "capacity": capacity,
-                  "initial_splats": min(args.initial_splats, capacity), "background": "white"},
+                  "initial_splats": args.initial_splats, "background": "white"},
         "training": {"iterations": iterations},
+        # Opacity reset off: with resets, every opacity is capped below late prune's cutoff.
+        "densification": {"fraction": DENSIFY_FRACTION, "opacity_reset_interval": 0},
+        # sparse: the course sparse MSE (sparse.samples_per_tile px per tile); dense: full-image MSE.
+        "sparse": {"enabled": args.loss == "sparse"},
         "learning_rates": {"position_max_steps": iterations, "shape": float(spec["b_lr"])},
         "convergence": {"enabled": False},  # equal iterations across arms (protocol)
         "reporting": {"log_every": max(1, iterations // 100), "eval_every": max(1, iterations // 100),
@@ -299,7 +309,9 @@ def main():
     ap.add_argument("--resolution", type=int, default=400)
     ap.add_argument("--iterations", type=int, default=20000)
     ap.add_argument("--capacity", type=int, default=100_000, help="Splat budget at 100%% (all scenes).")
-    ap.add_argument("--initial-splats", type=int, default=10_000, help="Random-init splat count.")
+    ap.add_argument("--initial-splats", type=int, default=INITIAL_SPLATS,
+                    help="Random-init splat count (protocol: 1000 in every run).")
+    ap.add_argument("--loss", default="sparse", choices=["sparse", "dense"])
     ap.add_argument("--moment-match", default="truncated", choices=["truncated", "untruncated"])
     ap.add_argument("--sweep-scenes", nargs="+", default=["lego", "ficus"])
     ap.add_argument("--b0-scenes", nargs="+", default=["lego", "ficus", "chair", "hotdog"])
