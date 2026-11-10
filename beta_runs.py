@@ -40,6 +40,7 @@ import yaml
 ROOT = Path(__file__).resolve().parent
 SCENES = ["chair", "drums", "ficus", "hotdog", "lego", "materials", "mic", "ship"]
 LR_SWEEP = [0.0005, 0.001, 0.002]
+PILOT_CAPACITIES = [10_000, 30_000, 100_000]
 DEFAULT_B_LR = 0.001
 INITIAL_SPLATS = 1000  # random-init count, identical in every run (room to grow even at 25% budget)
 DENSIFY_FRACTION = 0.2
@@ -57,6 +58,8 @@ ARMS = {
 
 
 def run_name(spec: dict) -> str:
+    if spec.get("pilot"):
+        return f"pilot_{spec['arm']}_{spec['scene']}_c{spec['capacity']}_{spec['loss']}"
     name = f"{spec['arm']}_{spec['scene']}_s{spec['seed']}"
     if spec.get("budget", 1.0) != 1.0:
         name += f"_cap{int(round(spec['budget'] * 100))}"
@@ -249,6 +252,13 @@ def spec(arm, scene, seed, b_lr, **extra):
 def queue(name: str, args) -> list[dict]:
     lr = chosen_b_lr(Path(args.runs))
     pair = args.sweep_scenes
+    if name == "pilot":
+        # Chooses capacity and loss (pick-pilot). Lego, seed 0, scored on VAL only so that no
+        # protocol choice is made on test data.
+        def p(arm, capacity, loss):
+            return spec(arm, "lego", 0, lr, pilot=True, capacity=capacity, loss=loss, eval_split="val")
+        return ([p("A", c, "sparse") for c in PILOT_CAPACITIES]
+                + [p("A", 30_000, "dense"), p("B", 30_000, "sparse"), p("B", 30_000, "dense")])
     if name == "q1":
         return ([spec("B", "lego", 0, x, eval_split="val", lr_tag=True) for x in LR_SWEEP]
                 + [spec("A", "lego", s, lr) for s in range(4)])
@@ -308,7 +318,7 @@ def sigma(args):
 
 def status(args):
     runs = Path(args.runs)
-    for q in ("q1", "q2", "q3", "q4"):
+    for q in ("pilot", "q1", "q2", "q3", "q4"):
         names = [run_name(s) for s in queue(q, args)]
         done = sum((runs / n / "DONE").exists() for n in names)
         print(f"{q}: {done}/{len(names)} done")
@@ -338,7 +348,8 @@ def summary(args):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("command", choices=["q1", "q2", "q3", "q4", "one", "pick-lr", "sigma", "status", "summary"])
+    ap.add_argument("command", choices=["pilot", "q1", "q2", "q3", "q4", "one", "pick-pilot", "pick-lr",
+                                        "sigma", "status", "summary"])
     ap.add_argument("--data-root", default=str(ROOT / "data"), help="Directory holding the 8 scene folders.")
     ap.add_argument("--runs", default=str(ROOT / "runs"))
     ap.add_argument("--arch", default="gpu", choices=["gpu", "cpu"])
@@ -369,7 +380,7 @@ def main():
     args = ap.parse_args()
     Path(args.runs).mkdir(parents=True, exist_ok=True)
 
-    if args.command in ("q1", "q2", "q3", "q4"):
+    if args.command in ("pilot", "q1", "q2", "q3", "q4"):
         specs = queue(args.command, args)
         print(f"{args.command}: {len(specs)} runs")
         for s in specs:
