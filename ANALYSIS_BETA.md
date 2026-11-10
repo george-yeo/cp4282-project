@@ -83,7 +83,7 @@ Ficus, B − A (seed 0): +0.45 at 2.5k, +0.71 at 5k, +0.81 at 10k.
 - Up to 10k the lead grows with the budget on both scenes.
 - From 10k to 30k it roughly doubles on lego (both seeds). On ficus it does not move on average
   (+0.75 vs +0.65): one seed goes up, the other down.
-- Ficus at 30k is a poor regime for both arms: PSNR is lower than at 10k (A 26.58 → 26.12,
+- Ficus at 30k is a poor regime for both arms: PSNR is lower than at 10k (A 26.57 → 26.12,
   B 27.22 → 26.86, means of two seeds) although LPIPS improves slightly. More splats did not
   help ficus at 20,000 iterations, the same pattern as lego at 100k in the pilot.
 - Either way the lead does not shrink as splats are added, which contradicts the idea that Beta
