@@ -217,6 +217,29 @@ Seed 0, 10k splats, test split:
   is one seed in a regime where both arms have collapsed by 6–8 dB, so treat the ficus 25-view
   loss as an anomaly to report, not as a finding.
 
+## 12. Where sharp and flat splats sit (b-maps)
+
+Figures: `figures/b_map_B_lego_s0.png` and `figures/b_map_B_ficus_s0.png`, made by
+`scripts/b_map.py`. Each pixel shows the visibility-weighted mean b of the splats it sees
+(blue = flat, grey = 0, red = sharp).
+
+| Run | Splats with b > +0.5 | Splats with b < −0.5 | Rank correlation of b with splat size |
+|---|---|---|---|
+| lego, seed 0 | 16% | 16% | −0.49 |
+| ficus, seed 0 | 28% | 1% | −0.41 |
+
+- **Ficus:** the leaves and thin stems are sharp (b > 0); the pot is flat (b < 0).
+- **Lego:** broad surfaces (baseplate, bucket faces, body panels) are flat; the bucket rim, the
+  thin rods and the stud outlines are sharp.
+- Large splats flatten and small splats sharpen (size = largest scale; Spearman correlation).
+- Reading: b does two jobs. Flat-topped splats tile smooth surfaces, and sharp splats draw edges
+  and thin structures. That fits point 5: the scenes that gain are the ones with a lot of thin
+  structure (ficus) or a mix of both (lego, hotdog). It is an interpretation of two scenes, not
+  a tested cause.
+- The ficus b-map also shows a faint haze of low-opacity floaters around the plant. They are in
+  the colour render too but nearly invisible on white. Whether the Gaussian arm has the same
+  floaters was not checked.
+
 ## Limits of the evidence
 
 - Two seeds per scene (four on lego) for the main table; one seed for B0, C, the budget sweep
@@ -224,4 +247,4 @@ Seed 0, 10k splats, test split:
 - One capacity (10k) for the main table; the capacity trend rests on lego and ficus.
 - Random init and 400 px only. No real-scene data.
 - b_lr was tuned on lego val only.
-- No qualitative analysis yet of where high-b and low-b splats sit in the image.
+- The b-maps cover two scenes, one seed each, two views each.
