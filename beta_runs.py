@@ -147,18 +147,20 @@ def make_config(spec: dict, run_dir: Path, args, capacity: int, loss: str) -> di
 
 
 def subset_views(src: Path, dst: Path, views: int) -> Path:
-    """A dataset dir whose transforms_train.json keeps `views` evenly spaced training frames."""
+    """A dataset dir whose transforms_train.json keeps `views` evenly spaced training frames.
+
+    Every manifest is copied with absolute frame paths (resolve_frame_image accepts them), so the
+    images stay in `src`. No symlinks: those need Developer Mode or admin rights on Windows."""
+    src = src.resolve()
     dst.mkdir(parents=True, exist_ok=True)
-    manifest = json.loads((src / "transforms_train.json").read_text())
-    frames = manifest["frames"]
-    keep = np.unique(np.round(np.linspace(0, len(frames) - 1, views)).astype(int))
-    manifest["frames"] = [frames[i] for i in keep]
-    (dst / "transforms_train.json").write_text(json.dumps(manifest, indent=1))
-    for item in src.iterdir():
-        target = dst / item.name
-        if item.name == "transforms_train.json" or target.exists():
-            continue
-        target.symlink_to(item.resolve())
+    for manifest_path in sorted(src.glob("transforms_*.json")):
+        manifest = json.loads(manifest_path.read_text())
+        frames = manifest["frames"]
+        if manifest_path.name == "transforms_train.json":
+            keep = np.unique(np.round(np.linspace(0, len(frames) - 1, views)).astype(int))
+            frames = [frames[i] for i in keep]
+        manifest["frames"] = [{**f, "file_path": str((src / f["file_path"]).resolve())} for f in frames]
+        (dst / manifest_path.name).write_text(json.dumps(manifest, indent=1))
     return dst
 
 
