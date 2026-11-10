@@ -240,6 +240,85 @@ Figures: `figures/b_map_B_lego_s0.png` and `figures/b_map_B_ficus_s0.png`, made 
   the colour render too but nearly invisible on white. Whether the Gaussian arm has the same
   floaters was not checked.
 
+b-maps for the other six scenes are in `figures/b_map_B_<scene>_s0.png`. They show the same
+pattern: ship's rigging and hull edges are sharp and its water is flat; chair's frame edges are
+sharp and its cushions flat. The low-opacity floaters around every object are flat (b < 0). The
+rank correlation of b with splat size is negative in all eight scenes (−0.42 to −0.69).
+
+## 13. Where in the image Beta gains: object boundaries
+
+`scripts/error_regions.py` splits every test pixel into four regions using the ground truth
+only: background (more than 2 px outside the silhouette), silhouette (within 2 px of it), detail
+(inside the object, top quarter of image gradient) and smooth (the rest of the inside). The table
+gives B's change in total squared error, and how much of it comes through each region
+(two seeds per scene, 200 test views each).
+
+| Scene | Total | Background | Silhouette | Detail | Smooth |
+|---|---|---|---|---|---|
+| ficus | −13.3% | −0.2 | **−11.8** | −0.3 | −1.0 |
+| hotdog | −8.9% | −1.1 | −0.8 | −3.0 | −4.0 |
+| lego | −6.5% | −0.3 | **−3.3** | −1.0 | −1.9 |
+| drums | −5.0% | −0.2 | **−2.9** | −0.7 | −1.2 |
+| materials | −0.6% | −0.1 | −0.8 | +0.1 | +0.2 |
+| mic | −0.5% | +0.1 | −0.4 | −0.6 | +0.4 |
+| chair | +4.4% | +1.7 | −0.7 | +0.6 | +2.8 |
+| ship | +16.3% | **+20.4** | +0.2 | −1.4 | −2.8 |
+
+- **Silhouettes improve in 7 of 8 scenes.** Error inside the silhouette band falls by 15% on
+  ficus, 17% on lego, 7% on drums, 3–4% on chair, hotdog and materials, 1% on mic. Ship is flat
+  (+0.8%).
+- **Ficus is almost all silhouette.** 78% of the Gaussian's error on ficus sits in the
+  silhouette band (thin leaves against white), and that is where Beta's gain is.
+- **Hotdog gains inside the object**, on both smooth and detailed areas.
+- **The learnable b is what sharpens boundaries.** On the four ablation scenes (seed 0), B0
+  changes silhouette error by −7%, −1%, +25% and +4% against A (no consistent effect), while B
+  against B0 changes it by −10%, −17%, −20% and −2% (lower in all four).
+- **Ship's loss is floaters, not the kernel's fit.** Inside the ship B is better (smooth −8%,
+  detail −4%), but its background error is 5.4× the Gaussian's on seed 0 and 1.9× on seed 1.
+  Without the background region B would be ahead by about 4%.
+- These percentages are of pooled squared error, which weights bad views more than the mean of
+  per-view PSNR used in the main table.
+
+## 14. Per view, Beta wins more often than the means suggest
+
+| Scene | B wins (share of test views, per seed) | Median per-view B − A (dB, per seed) |
+|---|---|---|
+| ficus | 96%, 90% | +0.84, +0.45 |
+| hotdog | 95%, 91% | +0.57, +0.58 |
+| lego | 96%, 81%, 90%, 90% | +0.46, +0.25, +0.61, +0.52 |
+| drums | 90%, 96% | +0.21, +0.21 |
+| ship | 64%, 85% | +0.11, +0.13 |
+| mic | 56%, 62% | +0.08, +0.14 |
+| materials | 57%, 56% | +0.04, +0.04 |
+| chair | 36%, 54% | −0.18, +0.08 |
+
+- By the median view, B is ahead in 17 of 18 seed pairs. The only exception is chair seed 0.
+- On ship B wins most views by a little and loses a few badly: its worst 5% of views are 1.4 to
+  3.0 dB behind, in runs of neighbouring cameras that look at the underside of the basin.
+- The worst views for B share one cause (`figures/worst_views_A_vs_B.png`): a few stray splats in
+  places the training views constrain poorly, such as under ship's basin, behind the chair,
+  at the base of the mic stand and under hotdog's plate.
+- So "where Beta does not shine" is mostly not a property of the scene's content. It is whether
+  a run happened to leave a visible floater.
+
+## 15. Why the seed matters: leftover floaters, shared by both arms
+
+Lego, four seeds per arm:
+
+- **The seed effect is spatially clustered.** After removing each seed's mean and each view's
+  mean, the remaining per-view PSNR is strongly correlated between neighbouring test views
+  (0.95 at one view apart, 0.5 at five apart, about 0 at twenty). Defects span about ten
+  consecutive cameras, so 200 test views behave like roughly 20 independent ones.
+- **The worst seed fails in the same place in both arms.** Seed 2 is the lowest seed for both
+  A and B, and both lose more than 1 dB on the same views (77–91 and 111–119). The renders show
+  the same white streak floaters beside the tracks in both arms
+  (`figures/seed2_floaters_lego.png`). The seed fixes the initial 1,000 random splats and the
+  order of training views, and both arms inherit the defect that grows from them.
+- **Pairing by seed already halves the noise.** The spread of B − A is 0.16 dB when both arms
+  use the same seed, and 0.31 dB across mismatched seeds.
+- Robust statistics do not remove it: the spread of the per-seed median is the same as the
+  spread of the mean (0.31 vs 0.30 dB for A), because a seed also shifts typical views a little.
+
 ## Limits of the evidence
 
 - Two seeds per scene (four on lego) for the main table; one seed for B0, C, the budget sweep
