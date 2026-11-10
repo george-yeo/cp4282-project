@@ -41,6 +41,9 @@ ROOT = Path(__file__).resolve().parent
 SCENES = ["chair", "drums", "ficus", "hotdog", "lego", "materials", "mic", "ship"]
 LR_SWEEP = [0.0005, 0.001, 0.002]
 PILOT_CAPACITIES = [10_000, 30_000, 100_000]
+PILOT_PSNR_TOLERANCE_DB = 0.5   # budget: smallest capacity within this of the 100k run (A, sparse, val)
+PILOT_TIMED_CAPACITY = 30_000   # dense (and B) timings are measured only at this capacity
+GPU_HOURS_BUDGET = 12.0         # dense loss if q1+q2+q3 project to at most this, else sparse
 DEFAULT_B_LR = 0.001
 INITIAL_SPLATS = 1000  # random-init count, identical in every run (room to grow even at 25% budget)
 DENSIFY_FRACTION = 0.2
@@ -301,6 +304,84 @@ def pick_lr(args):
     print(f"chosen b_lr = {best['b_lr']} -> {path}")
 
 
+def pick_pilot(args):
+    runs = Path(args.runs)
+    names = [run_name(s) for s in queue("pilot", args)]
+    done = {n: json.loads((runs / n / "DONE").read_text()) for n in names if (runs / n / "DONE").exists()}
+    missing = [n for n in names if n not in done]
+    if missing:
+        sys.exit(f"pilot runs not finished: {', '.join(missing)}")
+
+    print(f"{'run':30s} {'cap':>7s} {'loss':6s} {'PSNR':>7s} {'SSIM':>7s} {'LPIPS':>7s} {'active':>7s} "
+          f"{'ms/it':>6s} {'train':>6s} {'eval':>6s} {'mempool':>8s}")
+    table = []
+    for n in names:
+        d = done[n]
+        row = {k: d.get(k) for k in ("name", "arm", "capacity", "loss", "psnr_db", "ssim", "lpips", "final_active",
+                                     "ms_per_iteration", "train_seconds", "eval_seconds", "eval_views",
+                                     "peak_mempool_bytes")}
+        table.append(row)
+        lp = f"{row['lpips']:.4f}" if row.get("lpips") is not None else "-"
+        mem = f"{row['peak_mempool_bytes'] / 2**20:.0f} MB" if row.get("peak_mempool_bytes") else "-"
+        print(f"{n:30s} {row['capacity']:7d} {row['loss']:6s} {row['psnr_db']:7.3f} {row['ssim']:7.4f} {lp:>7s} "
+              f"{row['final_active']:7d} {row['ms_per_iteration']:6.1f} {row['train_seconds'] / 60:5.1f}m "
+              f"{row['eval_seconds'] / 60:5.1f}m {mem:>8s}")
+
+    def get(arm, capacity, loss):
+        return done[run_name({"pilot": True, "arm": arm, "scene": "lego", "capacity": capacity, "loss": loss})]
+
+    # Budget: smallest capacity whose A sparse val PSNR is no more than the tolerance below 100k's.
+    top = get("A", PILOT_CAPACITIES[-1], "sparse")["psnr_db"]
+    capacity = next(c for c in PILOT_CAPACITIES
+                    if get("A", c, "sparse")["psnr_db"] >= top - PILOT_PSNR_TOLERANCE_DB)
+    print()
+    print("budget: A sparse val PSNR " + ", ".join(
+        f"{c // 1000}k {get('A', c, 'sparse')['psnr_db']:.3f}" for c in PILOT_CAPACITIES)
+          + f" -> smallest within {PILOT_PSNR_TOLERANCE_DB} dB of 100k ({top - PILOT_PSNR_TOLERANCE_DB:.3f}): {capacity}")
+
+    # Projected GPU time of q1+q2+q3 at that capacity, per loss mode. Every Beta arm (B, B0, C) is
+    # timed by the B pilot. Timings measured at 30k are used unchanged for capacity <= 30k (an
+    # overestimate at 10k) and scaled linearly by capacity / 30k at 100k. Budget-fraction runs in q3
+    # are charged the full-capacity time. Eval time is charged per view of the run's split.
+    split_views = {}
+    for split in ("val", "test"):
+        path = Path(args.data_root).expanduser() / "lego" / f"transforms_{split}.json"
+        split_views[split] = len(json.loads(path.read_text())["frames"]) if path.exists() else {"val": 100, "test": 200}[split]
+
+    def seconds(arm, loss, split):
+        group = "A" if arm == "A" else "B"
+        measured = capacity if (group == "A" and loss == "sparse") else PILOT_TIMED_CAPACITY
+        d = get(group, measured, loss)
+        scale = capacity / measured if capacity > measured else 1.0
+        return scale * (d["train_seconds"] + d["eval_seconds"] / d["eval_views"] * split_views[split])
+
+    queued = {q: queue(q, args) for q in ("q1", "q2", "q3")}
+    projection = {}
+    for loss in ("dense", "sparse"):
+        per_queue = {q: sum(seconds(s["arm"], loss, s.get("eval_split", "test")) for s in specs) / 3600
+                     for q, specs in queued.items()}
+        projection[loss] = {"hours": sum(per_queue.values()), **{f"{q}_hours": h for q, h in per_queue.items()}}
+    n_runs = sum(len(v) for v in queued.values())
+    for loss in ("dense", "sparse"):
+        pr = projection[loss]
+        print(f"projected q1+q2+q3 ({n_runs} runs) @ {capacity}, {loss:6s}: {pr['hours']:5.1f} h  "
+              + "  ".join(f"{q} {pr[f'{q}_hours']:.1f} h" for q in queued))
+    loss = "dense" if projection["dense"]["hours"] <= GPU_HOURS_BUDGET else "sparse"
+    print(f"loss: dense projects to {projection['dense']['hours']:.1f} h vs {GPU_HOURS_BUDGET:g} h limit -> {loss}")
+
+    rule = (f"Budget = smallest of {PILOT_CAPACITIES} whose arm-A sparse-loss lego val PSNR is at least "
+            f"(100k PSNR - {PILOT_PSNR_TOLERANCE_DB} dB). Loss = dense if the projected GPU time (train + eval) of "
+            f"q1+q2+q3 at that budget is <= {GPU_HOURS_BUDGET:g} h, else sparse. Projection: per-run pilot "
+            f"train time plus eval time per view x views in the run's split; A runs timed by pilot A, B/B0/C by "
+            f"pilot B; dense and B timings come from {PILOT_TIMED_CAPACITY} and are used unscaled at or below "
+            f"{PILOT_TIMED_CAPACITY} and scaled by capacity/{PILOT_TIMED_CAPACITY} above it; q3 budget-fraction "
+            f"runs are charged full-capacity time.")
+    path = update_chosen(runs, capacity=capacity, loss=loss, pilot_rule=rule, pilot_table=table,
+                         pilot_projection={"capacity": capacity, "runs": n_runs, "split_views": split_views,
+                                           **projection})
+    print(f"chosen capacity = {capacity}, loss = {loss} -> {path}")
+
+
 def sigma(args):
     runs = Path(args.runs)
     rows = [d for d in load_done(runs) if d["arm"] == "A" and d["scene"] == "lego"
@@ -389,6 +470,8 @@ def main():
         b_lr = args.b_lr if args.b_lr is not None else chosen_b_lr(Path(args.runs))
         run(spec(args.arm, args.scene, args.seed, b_lr, budget=args.budget, views=args.views,
                  eval_split=args.split), args)
+    elif args.command == "pick-pilot":
+        pick_pilot(args)
     elif args.command == "pick-lr":
         pick_lr(args)
     elif args.command == "sigma":
