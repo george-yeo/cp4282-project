@@ -69,24 +69,48 @@ def run_name(spec: dict) -> str:
     return name
 
 
-def chosen_b_lr(runs: Path) -> float:
+def read_chosen(runs: Path) -> dict:
+    """runs/chosen.json: frozen protocol choices (capacity and loss from pick-pilot, b_lr from pick-lr)."""
     path = runs / "chosen.json"
-    if path.exists():
-        return float(json.loads(path.read_text())["b_lr"])
-    return DEFAULT_B_LR
+    return json.loads(path.read_text()) if path.exists() else {}
 
 
-def make_config(spec: dict, run_dir: Path, args) -> dict:
+def update_chosen(runs: Path, **values) -> Path:
+    """Merge into chosen.json; each pick-* command owns its own keys and keeps the others."""
+    chosen = read_chosen(runs)
+    chosen.update(values)
+    path = runs / "chosen.json"
+    path.write_text(json.dumps(chosen, indent=1))
+    return path
+
+
+def chosen_b_lr(runs: Path) -> float:
+    return float(read_chosen(runs).get("b_lr", DEFAULT_B_LR))
+
+
+def resolve_protocol(spec: dict, args) -> tuple[int | None, str | None]:
+    """(capacity, loss) for one run. A spec that names them (pilot runs) wins; otherwise
+    --capacity / --loss, otherwise runs/chosen.json. None when nothing provides a value."""
+    chosen = read_chosen(Path(args.runs))
+    if "capacity" in spec:
+        capacity = int(spec["capacity"])
+    else:
+        base = args.capacity if args.capacity is not None else chosen.get("capacity")
+        capacity = None if base is None else int(round(int(base) * spec.get("budget", 1.0)))
+    loss = spec.get("loss") or args.loss or chosen.get("loss")
+    return capacity, loss
+
+
+def make_config(spec: dict, run_dir: Path, args, capacity: int, loss: str) -> dict:
     scene_data = Path(args.data_root).expanduser().resolve() / spec["scene"]
     if not (scene_data / "transforms_train.json").exists():
         raise FileNotFoundError(f"No NeRF-synthetic scene at {scene_data}")
     if spec.get("views", 100) != 100:
         scene_data = subset_views(scene_data, run_dir / "data", spec["views"])
-    capacity = int(round(args.capacity * spec.get("budget", 1.0)))
     if args.initial_splats > capacity:
         raise ValueError(f"{run_name(spec)}: initial_splats {args.initial_splats} exceeds capacity {capacity}")
-    if args.loss not in ("sparse", "dense"):
-        raise ValueError(f"loss must be 'sparse' or 'dense', got {args.loss!r}")
+    if loss not in ("sparse", "dense"):
+        raise ValueError(f"loss must be 'sparse' or 'dense', got {loss!r}")
     kernel = {
         "type": "gaussian", "learn_b": True, "b_init": 0.0, "b_min": -2.0, "b_max": 2.0,
         "moment_match_init": True, "moment_match": args.moment_match,
@@ -107,7 +131,7 @@ def make_config(spec: dict, run_dir: Path, args) -> dict:
         # Opacity reset off: with resets, every opacity is capped below late prune's cutoff.
         "densification": {"fraction": DENSIFY_FRACTION, "opacity_reset_interval": 0},
         # sparse: the course sparse MSE (sparse.samples_per_tile px per tile); dense: full-image MSE.
-        "sparse": {"enabled": args.loss == "sparse"},
+        "sparse": {"enabled": loss == "sparse"},
         "learning_rates": {"position_max_steps": iterations, "shape": float(spec["b_lr"])},
         "convergence": {"enabled": False},  # equal iterations across arms (protocol)
         "reporting": {"log_every": max(1, iterations // 100), "eval_every": max(1, iterations // 100),
@@ -140,18 +164,26 @@ def run(spec: dict, args) -> dict | None:
     runs = Path(args.runs)
     name = run_name(spec)
     run_dir = runs / name
+    capacity, loss = resolve_protocol(spec, args)
     if (run_dir / "DONE").exists() and not args.force:
-        return json.loads((run_dir / "DONE").read_text())
+        done = json.loads((run_dir / "DONE").read_text())
+        if (done.get("capacity"), done.get("loss")) != (capacity, loss):
+            sys.exit(f"{name}: DONE has capacity={done.get('capacity')} loss={done.get('loss')} but this "
+                     f"queue resolves to capacity={capacity} loss={loss}. Use a fresh --runs or --force.")
+        return done
     if args.dry_run:
-        print(f"[dry-run] {name}  ({spec})")
+        print(f"[dry-run] {name}  capacity={capacity} loss={loss}  ({spec})")
         return None
+    if capacity is None or loss is None:
+        sys.exit(f"{name}: no capacity/loss. Run `pick-pilot` (writes {Path(args.runs) / 'chosen.json'}) "
+                 "or pass --capacity and --loss.")
     if spec.get("warm_from") and not (runs / spec["warm_from"] / "DONE").exists():
         print(f"[skip] {name}: warm-start source {spec['warm_from']} not finished yet")
         return None
     if run_dir.exists():
         shutil.rmtree(run_dir)  # unfinished: start clean
     run_dir.mkdir(parents=True)
-    config = make_config(spec, run_dir, args)
+    config = make_config(spec, run_dir, args, capacity, loss)
     (run_dir / "config.yaml").write_text(yaml.safe_dump(config, sort_keys=False))
     (run_dir / "spec.json").write_text(json.dumps(spec))
     print(f"[train] {name}", flush=True)
@@ -164,12 +196,15 @@ def run(spec: dict, args) -> dict | None:
         return None
     train_seconds = time.time() - started
     split = spec.get("eval_split", "test")
+    started = time.time()
     metrics = evaluate(run_dir, Path(config["paths"]["data"]), split, args)
     if metrics is None:
         return None
+    eval_seconds = time.time() - started
     runlog = json.loads((run_dir / "final.runlog.json").read_text())
-    summary = {"name": name, **spec, "split": split, **metrics,
-               "train_seconds": train_seconds, "ms_per_iteration": runlog["ms_per_iteration"],
+    summary = {"name": name, **spec, "capacity": capacity, "loss": loss,
+               "initial_splats": args.initial_splats, "split": split, **metrics,
+               "train_seconds": train_seconds, "eval_seconds": eval_seconds, "ms_per_iteration": runlog["ms_per_iteration"],
                "peak_mempool_bytes": runlog["peak_mempool_bytes"], "final_active": runlog["final_active"],
                "b_summary": runlog.get("b_summary")}
     (run_dir / "DONE").write_text(json.dumps(summary, indent=1))
@@ -252,8 +287,8 @@ def pick_lr(args):
         print(f"b_lr={d['b_lr']:<7g} val psnr={d['psnr_db']:.3f} ssim={d['ssim']:.5f} "
               f"b median={b.get('percentiles', [0] * 7)[3]:+.3f} at clamp={b.get('at_min', 0) + b.get('at_max', 0):.1%}")
     best = max(rows, key=lambda d: (round(d["ssim"], 4), d["psnr_db"]))
-    (runs / "chosen.json").write_text(json.dumps({"b_lr": best["b_lr"], "rule": "max val SSIM (4 dp), then PSNR"}))
-    print(f"chosen b_lr = {best['b_lr']} -> {runs / 'chosen.json'}")
+    path = update_chosen(runs, b_lr=best["b_lr"], b_lr_rule="max val SSIM (4 dp), then PSNR")
+    print(f"chosen b_lr = {best['b_lr']} -> {path}")
 
 
 def sigma(args):
@@ -285,8 +320,9 @@ def status(args):
 def summary(args):
     runs = Path(args.runs)
     rows = load_done(runs)
-    keys = ["name", "arm", "scene", "seed", "budget", "views", "b_lr", "split", "psnr_db", "ssim",
-            "lpips", "final_active", "ms_per_iteration", "peak_mempool_bytes", "train_seconds"]
+    keys = ["name", "arm", "scene", "seed", "budget", "capacity", "loss", "views", "b_lr", "split",
+            "psnr_db", "ssim", "lpips", "final_active", "ms_per_iteration", "peak_mempool_bytes",
+            "train_seconds", "eval_seconds"]
     with (runs / "summary.csv").open("w", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=keys, extrasaction="ignore")
         writer.writeheader()
@@ -308,10 +344,12 @@ def main():
     ap.add_argument("--arch", default="gpu", choices=["gpu", "cpu"])
     ap.add_argument("--resolution", type=int, default=400)
     ap.add_argument("--iterations", type=int, default=20000)
-    ap.add_argument("--capacity", type=int, default=100_000, help="Splat budget at 100%% (all scenes).")
+    ap.add_argument("--capacity", type=int, default=None,
+                    help="Splat budget at 100%% (all scenes). Default: runs/chosen.json (pick-pilot).")
     ap.add_argument("--initial-splats", type=int, default=INITIAL_SPLATS,
                     help="Random-init splat count (protocol: 1000 in every run).")
-    ap.add_argument("--loss", default="sparse", choices=["sparse", "dense"])
+    ap.add_argument("--loss", default=None, choices=["sparse", "dense"],
+                    help="Training loss. Default: runs/chosen.json (pick-pilot).")
     ap.add_argument("--moment-match", default="truncated", choices=["truncated", "untruncated"])
     ap.add_argument("--sweep-scenes", nargs="+", default=["lego", "ficus"])
     ap.add_argument("--b0-scenes", nargs="+", default=["lego", "ficus", "chair", "hotdog"])
