@@ -134,8 +134,10 @@ def make_config(spec: dict, run_dir: Path, args, capacity: int, loss: str) -> di
         "model": {"width": args.resolution, "height": args.resolution, "capacity": capacity,
                   "initial_splats": args.initial_splats, "background": "white"},
         "training": {"iterations": iterations},
-        # Opacity reset off: with resets, every opacity is capped below late prune's cutoff.
-        "densification": {"fraction": DENSIFY_FRACTION, "opacity_reset_interval": 0},
+        # Opacity reset off (protocol): with resets, every opacity is capped below late prune's
+        # cutoff. --opacity-reset-interval exists only for side experiments on seed variance.
+        "densification": {"fraction": DENSIFY_FRACTION,
+                          "opacity_reset_interval": args.opacity_reset_interval},
         # sparse: the course sparse MSE (sparse.samples_per_tile px per tile); dense: full-image MSE.
         "sparse": {"enabled": loss == "sparse"},
         "learning_rates": {"position_max_steps": iterations, "shape": float(spec["b_lr"])},
@@ -444,6 +446,8 @@ def main():
                     help="Random-init splat count (protocol: 1000 in every run).")
     ap.add_argument("--loss", default=None, choices=["sparse", "dense"],
                     help="Training loss. Default: runs/chosen.json (pick-pilot).")
+    ap.add_argument("--opacity-reset-interval", type=int, default=0,
+                    help="Side experiments only; the protocol keeps opacity reset off (0).")
     ap.add_argument("--moment-match", default="truncated", choices=["truncated", "untruncated"])
     ap.add_argument("--sweep-scenes", nargs="+", default=["lego", "ficus"])
     ap.add_argument("--b0-scenes", nargs="+", default=["lego", "ficus", "chair", "hotdog"])
