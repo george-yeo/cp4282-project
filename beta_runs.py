@@ -461,6 +461,9 @@ def main():
     ap.add_argument("--b-lr", type=float, default=None)
     ap.add_argument("--split", default="test", choices=["test", "val"])
     args = ap.parse_args()
+    # Absolute: config.yaml paths are resolved relative to the config file, so a relative --runs
+    # would nest (runs/X/runs/X/final.ply).
+    args.runs = str(Path(args.runs).expanduser().resolve())
     Path(args.runs).mkdir(parents=True, exist_ok=True)
 
     if args.command in ("pilot", "q1", "q2", "q3", "q4"):
