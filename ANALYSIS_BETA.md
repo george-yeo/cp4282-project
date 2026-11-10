@@ -20,8 +20,12 @@ gain comes from the learnable b, not from the kernel shape. It grows with the sp
 boundaries. On lego it stays between +0.3 and +0.7 dB under every training variant tried
 (full-capacity start, opacity reset, twice the iterations, 200 to 800 px).
 
+The mean gain is the same from a full-capacity start (+0.22 dB over the same 18 pairs,
+point 19), but which scenes gain is not. Ficus and lego lead in both settings. Hotdog's lead
+almost disappears from a full start, and ship and chair turn from losses into small gains.
+
 The protocol itself is noisy: 1,000 starting splats with no opacity reset leaves floaters that
-cost about 0.8 dB and account for most of the seed-to-seed spread (points 15 and 16).
+cost about 0.8 dB on lego and account for most of the seed-to-seed spread (points 15 and 16).
 
 ## 1. Overall gain: +0.22 dB, same cost
 
@@ -133,6 +137,8 @@ Spread of learned b at 10k (mean of seeds), next to the gain:
 - Mic and materials barely move b and gain nothing.
 - Ship and chair are exceptions: b spreads but PSNR does not improve. b movement is necessary
   for a gain here, not sufficient.
+- This ranking belongs to the protocol. From a full-capacity start (point 19) hotdog's lead
+  falls to +0.05 dB and ship's rises to +0.24 dB; only ficus and lego stay on top.
 
 ## 6. The kernel-aware densifier adds nothing
 
@@ -367,7 +373,8 @@ Lego, 10k splats, test split. Side runs outside the frozen protocol (`runs_rep*/
   repeated runs (chance noise falls with the square root of the number of runs).
 - Across the four training variants tried on lego, the lead is +0.42 (protocol), +0.38 (full
   start), +0.41 (opacity reset) and +0.45 dB (40,000 iterations, point 17).
-- Caveats: lego only. Each spread is estimated from four runs, so it is itself uncertain by
+- Caveats: lego only (point 19 repeats the full start on all eight scenes). Each spread is
+  estimated from four runs, so it is itself uncertain by
   roughly 40%; the 0.07 dB values are below the 0.12 dB same-seed spread measured under the
   protocol, which is within that uncertainty or means the cleaner settings also reduce chance
   noise.
@@ -407,11 +414,92 @@ Lego, 10k splats, seeds 0 and 1 (`runs_res200/`, `runs_res800/`).
   from a different direction.
 - Time per iteration stays equal between the arms (10.3 vs 10.6 ms at 800 px).
 
+## 19. All eight scenes from a full-capacity start: same mean lead, different scenes
+
+The main comparison (point 1) repeated with 10,000 starting splats instead of 1,000
+(`runs_init10k/`, side runs outside the frozen protocol; same seeds, everything else unchanged).
+
+| Scene | Seeds | A | B | B − A (dB) | Per-seed | B − A LPIPS | Protocol B − A |
+|---|---|---|---|---|---|---|---|
+| ficus | 2 | 25.81 | 26.59 | +0.77 | +0.78, +0.77 | −0.0069 | +0.65 |
+| lego | 4 | 28.02 | 28.40 | +0.38 | +0.46, +0.41, +0.31, +0.33 | −0.0045 | +0.42 |
+| ship | 2 | 27.04 | 27.28 | +0.24 | +0.28, +0.20 | −0.0061 | −0.10 |
+| drums | 2 | 23.94 | 24.04 | +0.10 | +0.08, +0.12 | −0.0056 | +0.22 |
+| chair | 2 | 30.21 | 30.30 | +0.09 | +0.06, +0.12 | −0.0016 | −0.19 |
+| hotdog | 2 | 34.02 | 34.07 | +0.05 | +0.05, +0.04 | +0.0000 | +0.53 |
+| mic | 2 | 30.15 | 30.18 | +0.03 | −0.01, +0.07 | +0.0002 | +0.04 |
+| materials | 2 | 24.85 | 24.83 | −0.02 | −0.01, −0.04 | −0.0030 | +0.03 |
+
+- **The mean lead is the same: +0.22 dB over 18 pairs** (protocol: +0.22). The standard
+  deviation of the pair differences is 0.25 dB (protocol 0.32), so the standard error is
+  0.059 dB (t ≈ 3.8). B wins 15/18 pairs on PSNR and 16/18 on LPIPS (protocol 14/18, 15/18).
+- **The lead is far more repeatable.** The two seeds of a scene disagree on B − A by 0.04 dB on
+  average, against 0.21 dB under the protocol. The largest disagreement is 0.08 dB (mic);
+  under the protocol it was 0.54 dB (chair). Most of this comes from Beta: the gap between a
+  scene's two seeds averages 0.25 dB for B under the protocol and 0.09 dB from a full start
+  (A: 0.10 and 0.08 dB).
+- **Ship and chair turn positive.** Ship goes from −0.10 to +0.24 dB, with B ahead on 94% and
+  91% of views and no view more than 1 dB behind (20 and 18 such views under the protocol).
+  Chair goes from −0.19 to +0.09 dB. This is what point 13 implied: their protocol losses were
+  floaters, not a poor fit of the kernel.
+- **Hotdog's lead almost disappears: +0.53 → +0.05 dB.** A full start helps the Gaussian by
+  1.14 dB on hotdog but Beta by only 0.65 dB. By the median view B is still ahead (+0.17,
+  +0.18 dB, 75–77% of views), but each seed has a run of 8–10 adjacent views where B is more
+  than 1 dB behind (views 11–20 on seed 0, 107–113 on seed 1). Leaving those views out, the
+  lead is +0.14 and +0.10 dB. So most of hotdog's protocol lead belongs to the sparse start,
+  not to the scene.
+- **Ficus and lego keep their lead** (+0.77 and +0.38 dB), and within each scene the seed
+  pairs agree to within 0.15 dB. These are the two scenes where the lead is established in
+  both settings.
+- **The scene ranking is only loosely preserved.** Rank correlation of the per-scene lead
+  between the two settings is 0.40 over eight scenes, which is not distinguishable from none.
+- **A full start is not better everywhere.** Both arms improve on hotdog, lego, ship, chair
+  and materials (+0.2 to +1.1 dB) but get worse on ficus (−0.76 A, −0.64 B) and mic (−0.39,
+  −0.41); drums is unchanged. The 0.9 dB gain measured on lego in point 16 does not generalise.
+- **A full start does not remove floaters either, except on ship.** Counting test views where
+  a scene's two seeds differ by more than 1 dB: 149 (A) and 218 (B) of 1,600 under the
+  protocol, 137 and 167 from a full start. Ship drops to none in both arms. Hotdog and chair
+  still have runs of adjacent bad views, in different places for each seed; the renders show
+  white streaks in front of the object in both arms, with more of them in B on the views
+  where B loses (`figures/full_start_floaters_hotdog_chair.png`).
+- b moves less in every scene (std 0.22–0.38 against 0.33–0.68) and almost nothing reaches the
+  clamp. Ficus keeps its positive shift (mean b +0.22).
+
+Where the change in error sits (`figures/error_regions_init10k.csv`, seeds 0 and 1, same
+regions as point 13):
+
+| Scene | Total | Background | Silhouette | Detail | Smooth |
+|---|---|---|---|---|---|
+| ficus | −15.7% | −0.0 | **−11.8** | −1.0 | −2.9 |
+| lego | −8.7% | −0.2 | **−3.1** | −2.5 | −2.9 |
+| ship | −5.7% | −1.0 | **−2.0** | −1.6 | −1.2 |
+| drums | −1.3% | −0.0 | **−2.0** | −0.1 | +0.9 |
+| mic | −0.4% | +0.0 | −0.0 | −0.4 | +0.0 |
+| chair | +0.3% | +0.2 | −0.9 | −0.5 | +1.4 |
+| materials | +0.6% | +0.0 | −0.5 | −0.2 | +1.3 |
+| hotdog | +2.3% | −0.2 | −0.4 | +0.0 | +2.8 |
+
+- **Silhouettes are the consistent gain.** Error inside the silhouette band falls in seven
+  scenes (18% on lego and ficus, 11% on ship, 5% on drums and chair, 2% on materials and
+  hotdog) and is flat on mic (−0.1%). In neither setting does a scene get clearly worse there;
+  the worst case is ship under the protocol (+0.8%).
+- **Smooth interiors are mixed.** Error on smooth areas inside the object falls on ficus, lego
+  and ship (4–12%) and rises on hotdog, materials, chair and drums (2–7%). On hotdog and chair
+  the floater streaks lie over the object, so part of that rise is floaters; on materials and
+  drums no cause was identified.
+- Ship's background, which cost B 20% of the total error under the protocol, now has 4% less
+  error than the Gaussian's.
+- Caveats: two seeds per scene (four on lego); pooled squared error weights bad views more than
+  mean PSNR does, which is why hotdog and chair show a small rise in error next to a small
+  PSNR lead.
+
 ## Limits of the evidence
 
 - Two seeds per scene (four on lego) for the main table; one seed for B0, C, the budget sweep
   and the view-count sweep.
 - One capacity (10k) for the main table; the capacity trend rests on lego and ficus.
-- Random init and 400 px only. No real-scene data.
+- Which scenes gain depends on the starting splat count (point 19). Only ficus and lego lead
+  in both settings; hotdog's lead is specific to the 1,000-splat start.
+- Random init only; resolutions other than 400 px were tried on lego alone. No real-scene data.
 - b_lr was tuned on lego val only.
 - The b-maps cover two scenes, one seed each, two views each.

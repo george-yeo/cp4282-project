@@ -183,6 +183,35 @@ in progress.
   +0.42, +0.38, +0.41 and +0.45 dB under the protocol, a full start, resets and 40,000
   iterations.
 
+### 15. Does the per-scene picture survive a full start?
+
+- **Why:** steps 13 and 14 tested the lead on lego only. The scene ranking (ficus, hotdog and
+  lego win; ship and chair lose) had never been tested against a protocol change.
+- **Test:** the whole eight-scene comparison again from 10,000 starting splats, same seeds,
+  28 new runs (lego's eight were reused).
+- **What the earlier steps implied, stated before the runs:** step 11 said ship's and chair's
+  losses were floaters, and the region split put Beta about 4% ahead on ship without its
+  background. If so, both should turn positive once the floaters go. Nothing was predicted for
+  hotdog.
+- **Result 1:** the mean lead is identical, +0.22 dB over the same 18 pairs, and the seeds of a
+  scene now disagree on it by 0.04 dB instead of 0.21 dB.
+- **Result 2, as implied:** ship goes from −0.10 to +0.24 dB (5.7% less squared error) and chair
+  from −0.19 to +0.09 dB.
+- **Result 3, not expected:** hotdog's lead falls from +0.53 to +0.05 dB. The full start helps
+  the Gaussian by 1.14 dB there and Beta by 0.65 dB.
+- **Looked at the views before explaining it:** each hotdog seed has a run of 8–10 adjacent
+  views where Beta is more than 1 dB behind, in a different place for each seed. The renders
+  show white streaks over the plate in both arms, more of them in Beta. Without those views the
+  lead is +0.10 to +0.14 dB, still far below the protocol's. So floaters explain part of the
+  drop, not all of it.
+- **Two claims from step 13 that did not generalise:** "a full start adds 0.9 dB" (ficus loses
+  0.7 dB and mic 0.4 dB in both arms) and "a full start removes the collapsed view clusters"
+  (true on lego and ship; hotdog and chair keep them).
+- **What held in both settings:** the mean lead; ficus and lego on top; lower silhouette error
+  wherever it changes at all.
+- **Not explained:** why hotdog's lead depends on the start, why ficus and mic get worse from
+  a full start, and why smooth-area error rises on materials and drums.
+
 ## Claims that were corrected
 
 | Earlier claim | What replaced it | What forced the change |
@@ -198,6 +227,8 @@ in progress.
 | The seed's starting splats decide where a floater forms | The same floater appears in a same-seed repeat; it is a weak spot of the scene, hit partly by chance | Same-seed repeats |
 | b spread tracks the gain | From a full start b spreads half as much and the gain is the same | Full-start runs |
 | Opacity reset will cost quality | It adds 0.8 dB on lego | Opacity-reset runs |
+| Hotdog is one of three scenes that suit Beta | Its +0.53 dB lead is +0.05 dB from a full start; only ficus and lego lead in both settings | Eight scenes from a full start |
+| A full start adds 0.9 dB and removes the bad view clusters | True on lego. Ficus and mic get worse, and hotdog and chair keep their clusters | Eight scenes from a full start |
 
 ## Predictions for the runs in progress, written before their results
 
@@ -232,7 +263,11 @@ All are lego, both arms, 10k splats, off-protocol side runs.
 
 ## Still untested
 
-- Whether hotdog's gain is capped by the b clamp.
+- Why hotdog's lead depends on the starting splat count. (The earlier question, whether the b
+  clamp caps hotdog's gain, matters less now: from a full start nothing reaches the clamp and
+  the lead is gone.)
+- Why a full start lowers PSNR on ficus and mic.
+- Opacity reset on scenes other than lego, and a full start combined with reset.
 - Whether any of this holds with a point-cloud init, on real scenes, or above 400 px.
 - Whether flat (b < 0) floaters are more damaging than Gaussian ones. The b-maps show floaters
   are flat, but damage per floater was not measured.
