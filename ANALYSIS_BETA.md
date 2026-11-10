@@ -15,7 +15,8 @@ flatter, more box-like splat.
 ## Headline
 
 Beta with a learnable b gives a small, consistent gain over the Gaussian at no extra cost. The
-gain comes from the learnable b, not from the kernel shape, and it grows with the splat budget.
+gain comes from the learnable b, not from the kernel shape. It grows with the splat budget up to
+10k on both scenes tested and does not shrink beyond that.
 
 ## 1. Overall gain: +0.22 dB, same cost
 
@@ -54,7 +55,7 @@ gain comes from the learnable b, not from the kernel shape, and it grows with th
 - The budget sweep agrees: B0 stays within 0.2 dB of A at 25% and 50% capacity, while B leads both.
 - Single seed per cell, so the lego split between "shape" and "learnable b" is within noise.
 
-## 3. The lead grows with the splat budget
+## 3. The lead grows with the splat budget up to 10k, and does not shrink beyond
 
 Lego, B − A:
 
@@ -72,9 +73,22 @@ Ficus, B − A (seed 0): +0.45 at 2.5k, +0.71 at 5k, +0.81 at 10k.
 | 0 | 28.14 | 29.26 | +1.11 | +0.47 |
 | 1 | 28.31 | 28.83 | +0.52 | +0.18 |
 
-- The lead roughly doubles from 10k to 30k on both seeds.
-- This contradicts the idea that Beta mainly helps when splats are scarce.
-- Caveats: two seeds and one scene at 30k; the two seeds disagree on the size. The 30k runs are
+30k side check (ficus, `runs_30k/`):
+
+| Seed | A | B | B − A at 30k | B − A at 10k |
+|---|---|---|---|---|
+| 0 | 25.97 | 27.21 | +1.24 | +0.81 |
+| 1 | 26.26 | 26.51 | +0.25 | +0.49 |
+
+- Up to 10k the lead grows with the budget on both scenes.
+- From 10k to 30k it roughly doubles on lego (both seeds). On ficus it does not move on average
+  (+0.75 vs +0.65): one seed goes up, the other down.
+- Ficus at 30k is a poor regime for both arms: PSNR is lower than at 10k (A 26.58 → 26.12,
+  B 27.22 → 26.86, means of two seeds) although LPIPS improves slightly. More splats did not
+  help ficus at 20,000 iterations, the same pattern as lego at 100k in the pilot.
+- Either way the lead does not shrink as splats are added, which contradicts the idea that Beta
+  mainly helps when splats are scarce.
+- Caveats: two seeds per scene at 30k, and the seeds disagree on the size. The 30k runs are
   outside the frozen protocol (main results are all at 10k).
 
 ## 4. How b is used: flatter when splats are scarce, sharper when plentiful
@@ -87,7 +101,7 @@ Mean and spread of learned b (seed 0) across the budget sweep:
 | 5k | −0.17 | 0.60 | +0.14 | 0.40 |
 | 9k | −0.03 | 0.66 | +0.26 | 0.46 |
 | 10k | −0.01 | 0.67 | +0.27 | 0.45 |
-| 30k | +0.08 | 0.61 | n/a | n/a |
+| 30k | +0.08 | 0.61 | +0.27 | 0.39 |
 
 - With few splats, b drifts negative: splats flatten to cover area.
 - With more splats, b rises and spreads: splats sharpen to carry detail.
@@ -169,7 +183,7 @@ gets about twice the optimisation, so the +0.6–0.7 dB is extra training, not t
 | Full method on Blender | +0.86 dB over 3DGS-MCMC | not tested (kernel only) |
 | Best scenes | ficus +1.72, hotdog +1.13, lego +1.10 | ficus, hotdog, lego |
 | Smallest gain | chair +0.19 | chair −0.19 |
-| Budget trend | Gaussian plateaus, Beta keeps improving | lead grows 2.5k → 30k |
+| Budget trend | Gaussian plateaus, Beta keeps improving | lead grows 2.5k → 10k; to 30k on lego only |
 | Densifier | opacity-only MCMC, no kernel-specific maths | kernel-aware densifier adds nothing |
 
 - Most of the paper's headline gain is not the kernel: its own ablation gives the kernel about
