@@ -144,6 +144,25 @@ in progress.
   is inherited by both arms. Pairing by seed removes this shared part (0.31 → 0.16 dB).
 - **Tried and ruled out:** a robust statistic. The per-seed median is as spread as the mean.
 
+### 13. How much of the seed spread is chance, and can it be reduced?
+
+- **Test:** seed 0 run four times per arm; four seeds starting from 10,000 splats; two seeds at
+  40,000 iterations. Predictions were written first (see the section below).
+- **Result 1:** the same seed varies by 0.12 dB. That is the floor for a single GPU run.
+- **Result 2, which overturned part of step 12:** one same-seed repeat of the Gaussian lost more
+  than 1 dB on views 77–88, the exact place where seed 2 fails. Nothing had changed between the
+  repeats. So the defect is a weak spot of the scene that runs fall into partly by chance, not
+  something a seed's starting splats decide.
+- **Result 3:** starting from 10,000 splats cuts the Gaussian's seed spread from 0.30 to
+  0.12 dB, raises both arms by 0.9 dB and removes the collapsed view clusters.
+- **Result 4:** Beta's lead is unchanged from a full start (+0.38 against +0.42 dB) and far more
+  consistent across seeds (spread 0.07 against 0.16 dB). The main finding survived a change in
+  a protocol setting it could have depended on.
+- **Result 5:** at 40,000 iterations both arms gain 0.5 dB and the lead stays.
+- **Consequence for the protocol:** the frozen choice of 1,000 starting splats costs about
+  0.9 dB and more than doubles the Gaussian's seed spread. It does not change the conclusion.
+  It was not changed after the fact; the full-start runs are reported as a side check.
+
 ## Claims that were corrected
 
 | Earlier claim | What replaced it | What forced the change |
@@ -156,6 +175,8 @@ in progress.
 | Ship and chair do not suit Beta | Their losses are floaters in a few views | Region split and worst-view renders |
 | Seed spread is ordinary noise | Clustered floaters shared by both arms | Per-view decomposition |
 | b spread predicts the gain, with two unexplained exceptions | The exceptions are the floater scenes | Region split |
+| The seed's starting splats decide where a floater forms | The same floater appears in a same-seed repeat; it is a weak spot of the scene, hit partly by chance | Same-seed repeats |
+| b spread tracks the gain | From a full start b spreads half as much and the gain is the same | Full-start runs |
 
 ## Predictions for the runs in progress, written before their results
 
@@ -177,6 +198,16 @@ All are lego, both arms, 10k splats, off-protocol side runs.
 - **200 px and 800 px.** Two readings disagree. If Beta's gain is boundary sharpness, the lead
   should grow with resolution. If it follows splats per unit of detail (step 7), the lead should
   shrink at 800 px, where 10k splats are relatively scarcer.
+
+### How the first three predictions came out
+
+| Prediction | Outcome |
+|---|---|
+| Same-seed repeats agree to well under 0.3 dB if the seed decides everything | Spread 0.12 dB: mostly, but chance alone is a real share, and it can reproduce the "seed 2" floater |
+| A full start changes the seed spread, direction unknown | Spread falls to the chance floor for the Gaussian; quality rises 0.9 dB |
+| 40,000 iterations shrinks the spread if defects are under-training | Both arms gain 0.5 dB, so 20,000 is under-trained; two seeds cannot say anything about spread |
+
+The opacity-reset and resolution runs were still in progress when this was written.
 
 ## Still untested
 

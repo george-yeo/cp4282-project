@@ -312,12 +312,61 @@ Lego, four seeds per arm:
 - **The worst seed fails in the same place in both arms.** Seed 2 is the lowest seed for both
   A and B, and both lose more than 1 dB on the same views (77–91 and 111–119). The renders show
   the same white streak floaters beside the tracks in both arms
-  (`figures/seed2_floaters_lego.png`). The seed fixes the initial 1,000 random splats and the
-  order of training views, and both arms inherit the defect that grows from them.
+  (`figures/seed2_floaters_lego.png`).
+- **But the seed is not the only cause of that defect.** One of three same-seed repeats of
+  Gaussian seed 0 (point 16) lost more than 1 dB on views 77–88, the same place, with nothing
+  changed. The spot beside the tracks is a weak point of the scene that a run falls into partly
+  by chance. A seed can make it more likely; it does not decide it.
 - **Pairing by seed already halves the noise.** The spread of B − A is 0.16 dB when both arms
   use the same seed, and 0.31 dB across mismatched seeds.
 - Robust statistics do not remove it: the spread of the per-seed median is the same as the
   spread of the mean (0.31 vs 0.30 dB for A), because a seed also shifts typical views a little.
+
+## 16. How much of the seed spread is chance, and how to shrink it
+
+Lego, 10k splats, test split. Side runs outside the frozen protocol (`runs_rep*/`,
+`runs_init10k/`).
+
+| Setting | Runs per arm | A mean ± sd | B mean ± sd | B − A | sd of paired B − A |
+|---|---|---|---|---|---|
+| Protocol (1,000 starting splats), seeds 0–3 | 4 | 27.12 ± 0.30 | 27.54 ± 0.19 | +0.42 | 0.16 |
+| Protocol, seed 0 run four times | 4 | 27.13 ± 0.12 | 27.78 ± 0.13 | +0.65 | not paired |
+| 10,000 starting splats, seeds 0–3 | 4 | 28.02 ± 0.12 | 28.40 ± 0.16 | +0.38 | 0.07 |
+
+- **About 0.12 dB of spread is pure chance.** The same seed run four times on the GPU varies by
+  0.12 dB (A) and 0.13 dB (B). GPU float atomics make runs diverge, and training amplifies it.
+  No handling of seeds can get a single run below this.
+- **The rest comes from growing 10,000 splats out of 1,000.** Starting from 10,000 random splats
+  brings the Gaussian's seed spread down from 0.30 to 0.12 dB, which is the chance floor.
+- **A full start is also better:** +0.9 dB for both arms, and no run has a collapsed cluster of
+  views. The worst single view is 23.3 dB or better in all eight runs, against 20.7 and 19.6 dB
+  for seed 2 under the protocol.
+- **Beta's lead does not depend on the start.** It is +0.38 dB from a full start and +0.42 dB
+  under the protocol. From a full start all four seeds agree closely (+0.46, +0.41, +0.31,
+  +0.33), so the spread of the paired difference falls from 0.16 to 0.07 dB.
+- **One protocol pair understates or overstates by chance.** Seed 0's single pair gave +0.47 dB;
+  the mean of four runs per arm at seed 0 gives +0.65 dB.
+- With a full start b spreads less (std 0.38 against 0.67) and nothing reaches the clamp, yet
+  the lead is the same size. The link between b spread and gain in point 5 is therefore loose.
+- Ways to shrink the variance, in order of effect: start from full capacity; pair by seed;
+  average repeated runs (the 0.12 dB floor falls with the square root of the number of runs).
+- Caveat: each spread is estimated from four runs, so it is itself uncertain by roughly 40%.
+
+## 17. Longer training: both arms improve, the lead stays
+
+Lego, 40,000 iterations, seeds 0 and 1 (`runs_it40k/`).
+
+| | A | B | B − A |
+|---|---|---|---|
+| 20,000 iterations (protocol), seeds 0, 1 | 27.24, 27.42 | 27.71, 27.61 | +0.47, +0.18 |
+| 40,000 iterations, seeds 0, 1 | 27.81, 27.92 | 28.16, 28.47 | +0.35, +0.55 |
+
+- Both arms gain about 0.5 dB, so 20,000 iterations is under-trained at this budget.
+- The lead does not close with more training (+0.45 dB against +0.33 dB for the same seeds), so
+  it is not a matter of Beta converging faster.
+- b keeps moving: its spread grows from 0.67 to 0.87 and 5% of splats reach the +2 clamp. b has
+  not settled at 20,000 iterations, and with longer training the clamp starts to bind.
+- Two seeds only.
 
 ## Limits of the evidence
 
