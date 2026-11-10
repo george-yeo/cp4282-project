@@ -10,7 +10,7 @@ Built on George's AS2 submission (`george-yeo/cp4282-as2`, branch `main`, on top
 | `gaussian_first_tile_workspace_gpu.py` | Tile bounds use the same per-splat support as shading (`kernel_support`). |
 | `shared/training_config.py` | `kernel:` section (`type`, `learn_b`, `b_init`, `b_min/max`, `moment_match_init`, `moment_match`, `densifier`, `moment_dim`) and `learning_rates.shape`. |
 | `3dgs_evaluator.py` | Renders with the Beta kernel when `<ply>.beta.npz` exists. `--override-b` sets every b to one value; `--max-views N` evaluates only the first N views. |
-| `beta_runs.py` | Run driver and queues (q1–q4), `pick-lr`, `sigma`, `status`, `summary`. |
+| `beta_runs.py` | Run driver and queues (`pilot`, q1–q4), `pick-pilot`, `pick-lr`, `sigma`, `status`, `summary`. |
 | `checks/` | Gradient and equivalence gates (below). |
 
 Arm A uses exactly the course kernel. Its gradients are bit-identical before and after the Beta change (same output from `3dgs_gradient_check_gpu.py`). They also match the AS2 submission, except that a colour channel sitting exactly at 0 or 1 now still receives gradient.
@@ -21,9 +21,9 @@ Arm A uses exactly the course kernel. Its gradients are bit-identical before and
 2. **Moments are 2D.** The rendered footprint is a 2D Beta on the projected covariance, so the untruncated variance factor is 9/(2β+4). ρ(β) = √(6/(β+2)). `kernel.moment_dim: 3` gives the proposal's 3D version.
 3. **Moment matching is truncated and opacity-aware** (`kernel.moment_match: truncated`). It matches the second moment of the footprint the Compact Box actually renders, at each splat's opacity. The factor is 1.09 at o = 1 and 0.99 at random-init opacity (σ(−4) ≈ 0.018), against √(4/3) = 1.155 untruncated. On the lego init cloud, a Gaussian render reproduced as Beta b = 0 reaches **44–46 dB** with truncated matching, against 34 dB with √(4/3) and 40 dB with no scaling (`checks/check_arm_equivalences.py`).
 4. **Arm C uses the untruncated ρ(β) and c(β)** as proposed, with the 2D fix. Opacity-aware versions are possible but not implemented.
-5. **Budget.** The course densifier always fills `model.capacity` (it refills freed slots with no cutoff), so there is no unconstrained count to take a fraction of. Capacity *is* the budget: `--capacity` (default 100k, same for all scenes), with the sweep at 25/50/90/100% of it.
+5. **Budget.** The course densifier always fills `model.capacity` (it refills freed slots with no cutoff), so there is no unconstrained count to take a fraction of. Capacity *is* the budget: one value for all scenes, chosen by the pilot (`pick-pilot` → `runs/chosen.json`, overridable with `--capacity`), with the sweep at 25/50/90/100% of it.
 6. **Opacity reset is off** (course default `opacity_reset_interval: 0`). With resets on, every opacity is capped at 0.01, which is below late prune's `opacity_cutoff = 0.02`, and late prune fires every 400 iterations once armed. So a reset risks pruning every splat that hasn't recovered within 400 iterations. I haven't tested this; it's the reason I left resets off.
-7. **Protocol overrides of the course defaults:** 400×400, 20k iterations, `position_max_steps = iterations`, convergence (early stop) off, random init with 10k splats (`--initial-splats`), one snapshot at the end. All other densification, ADC and learning-rate settings are course defaults.
+7. **Protocol overrides of the course defaults:** 400×400, 20k iterations, `position_max_steps = iterations`, convergence (early stop) off, random init with 1,000 splats in every run (so even the 25% budget has room to grow), `densification.fraction = 0.2`, `opacity_reset_interval = 0`, one snapshot at the end. Loss is dense or the course sparse MSE (48 px/tile), chosen by the pilot (`--loss` overrides). All other densification, ADC and learning-rate settings are course defaults.
 
 ## Gates (run these first on the GPU box)
 
@@ -48,8 +48,10 @@ After the first trained A model exists, re-run G2 on it:
 Data: the eight NeRF-synthetic scenes in one folder (`<root>/{chair,drums,...}/transforms_*.json`). The checks read `data/lego` (copy `data/` from your AS2 clone).
 
 ```bash
+python beta_runs.py pilot --data-root ~/data/nerf_synthetic  # 6 lego runs (val): capacity x loss
+python beta_runs.py pick-pilot                               # writes capacity + loss to runs/chosen.json
 python beta_runs.py q1 --data-root ~/data/nerf_synthetic     # 3 b-lr runs (val) + 4 A lego seeds (test)
-python beta_runs.py pick-lr                                  # writes runs/chosen.json
+python beta_runs.py pick-lr                                  # merges b_lr into runs/chosen.json
 python beta_runs.py sigma                                    # writes runs/sigma.json
 python beta_runs.py q2 --data-root ~/data/nerf_synthetic     # 32 core runs
 python beta_runs.py q3 --data-root ~/data/nerf_synthetic     # B0 x4, budget, B@90%, warm start, C x2
