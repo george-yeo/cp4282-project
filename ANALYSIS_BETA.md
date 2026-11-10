@@ -16,7 +16,12 @@ flatter, more box-like splat.
 
 Beta with a learnable b gives a small, consistent gain over the Gaussian at no extra cost. The
 gain comes from the learnable b, not from the kernel shape. It grows with the splat budget up to
-10k on both scenes tested and does not shrink beyond that.
+10k on both scenes tested and does not shrink beyond that. It shows up mainly at object
+boundaries. On lego it stays between +0.3 and +0.7 dB under every training variant tried
+(full-capacity start, opacity reset, twice the iterations, 200 to 800 px).
+
+The protocol itself is noisy: 1,000 starting splats with no opacity reset leaves floaters that
+cost about 0.8 dB and account for most of the seed-to-seed spread (points 15 and 16).
 
 ## 1. Overall gain: +0.22 dB, same cost
 
@@ -332,7 +337,15 @@ Lego, 10k splats, test split. Side runs outside the frozen protocol (`runs_rep*/
 | Protocol (1,000 starting splats), seeds 0–3 | 4 | 27.12 ± 0.30 | 27.54 ± 0.19 | +0.42 | 0.16 |
 | Protocol, seed 0 run four times | 4 | 27.13 ± 0.12 | 27.78 ± 0.13 | +0.65 | not paired |
 | 10,000 starting splats, seeds 0–3 | 4 | 28.02 ± 0.12 | 28.40 ± 0.16 | +0.38 | 0.07 |
+| Opacity reset every 3,000 iterations, seeds 0–3 | 4 | 27.90 ± 0.16 | 28.32 ± 0.07 | +0.41 | 0.13 |
 
+- **Opacity reset removes the floater clusters.** With resets (`runs_reset/`), no seed has a
+  view more than 1 dB below the other seeds, in either arm. The seed-by-view variance falls about
+  tenfold (0.28 → 0.04 for A, 0.42 → 0.03 for B). The seed spread halves for the Gaussian and
+  falls to 0.07 dB for Beta. This is the direct evidence that floaters cause the spread.
+- **Reset also raises quality by 0.8 dB for both arms.** A cost was expected, because the code
+  notes that resets interfere with late pruning. There was none on lego.
+- **Beta's lead is again unchanged:** +0.41 dB with resets.
 - **About 0.12 dB of spread is pure chance.** The same seed run four times on the GPU varies by
   0.12 dB (A) and 0.13 dB (B). GPU float atomics make runs diverge, and training amplifies it.
   No handling of seeds can get a single run below this.
@@ -348,9 +361,16 @@ Lego, 10k splats, test split. Side runs outside the frozen protocol (`runs_rep*/
   the mean of four runs per arm at seed 0 gives +0.65 dB.
 - With a full start b spreads less (std 0.38 against 0.67) and nothing reaches the clamp, yet
   the lead is the same size. The link between b spread and gain in point 5 is therefore loose.
-- Ways to shrink the variance, in order of effect: start from full capacity; pair by seed;
-  average repeated runs (the 0.12 dB floor falls with the square root of the number of runs).
-- Caveat: each spread is estimated from four runs, so it is itself uncertain by roughly 40%.
+- With resets b ends flatter (mean −0.23, std 0.38), again with the same lead.
+- Ways to shrink the variance: start from full capacity, or reset opacity (each roughly halves
+  the spread and adds 0.8–0.9 dB; the two together were not tested); pair by seed; average
+  repeated runs (chance noise falls with the square root of the number of runs).
+- Across the four training variants tried on lego, the lead is +0.42 (protocol), +0.38 (full
+  start), +0.41 (opacity reset) and +0.45 dB (40,000 iterations, point 17).
+- Caveats: lego only. Each spread is estimated from four runs, so it is itself uncertain by
+  roughly 40%; the 0.07 dB values are below the 0.12 dB same-seed spread measured under the
+  protocol, which is within that uncertainty or means the cleaner settings also reduce chance
+  noise.
 
 ## 17. Longer training: both arms improve, the lead stays
 
@@ -367,6 +387,25 @@ Lego, 40,000 iterations, seeds 0 and 1 (`runs_it40k/`).
 - b keeps moving: its spread grows from 0.67 to 0.87 and 5% of splats reach the +2 clamp. b has
   not settled at 20,000 iterations, and with longer training the clamp starts to bind.
 - Two seeds only.
+
+## 18. Image resolution: the lead holds from 200 px to 800 px
+
+Lego, 10k splats, seeds 0 and 1 (`runs_res200/`, `runs_res800/`).
+
+| Resolution | A | B | B − A (dB) | B − A LPIPS | Mean b |
+|---|---|---|---|---|---|
+| 200 px | 28.14, 28.31 | 28.53, 28.90 | +0.39, +0.58 | −0.0009, −0.0025 | +0.09 |
+| 400 px (protocol) | 27.24, 27.42 | 27.71, 27.61 | +0.47, +0.18 | −0.0048, −0.0001 | −0.01 |
+| 800 px | 26.94, 27.22 | 27.82, 27.66 | +0.88, +0.44 | −0.0168, −0.0086 | −0.25 |
+
+- Beta leads at every resolution: +0.49, +0.33 and +0.66 dB on average.
+- No trend can be claimed. With two seeds each mean is uncertain by about 0.1 dB, and the
+  order (400 lowest) is not monotone.
+- The LPIPS gap is clearly largest at 800 px (9–17% lower than the Gaussian's).
+- Mean b falls as resolution rises. At 800 px the same 10,000 splats must cover more detail
+  each, and b goes flat; at 200 px splats are plentiful and b goes sharp. This matches point 4,
+  from a different direction.
+- Time per iteration stays equal between the arms (10.3 vs 10.6 ms at 800 px).
 
 ## Limits of the evidence
 

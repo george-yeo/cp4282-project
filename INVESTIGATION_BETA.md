@@ -163,6 +163,26 @@ in progress.
   0.9 dB and more than doubles the Gaussian's seed spread. It does not change the conclusion.
   It was not changed after the fact; the full-start runs are reported as a side check.
 
+### 14. Do floaters really cause the spread, and does resolution change the lead?
+
+- **Test of the floater explanation:** if floaters cause the seed spread, removing them should
+  remove it. Opacity reset every 3,000 iterations, four seeds per arm.
+- **Result:** no run of bad views in any seed; seed-by-view variance down about tenfold; seed
+  spread halved for the Gaussian and down to 0.07 dB for Beta. The explanation passed a test it
+  could have failed.
+- **Prediction that was wrong:** a quality cost was expected from resets. Quality rose 0.8 dB.
+- **Resolution:** two readings predicted opposite directions. The lead is +0.49, +0.33 and
+  +0.66 dB at 200, 400 and 800 px. With two seeds that is neither a rise nor a fall, so neither
+  reading is supported and no trend is claimed.
+- **A check that came for free:** step 10 said b goes flat when splats are scarce. Scarcity was
+  varied there by cutting the splat count. Raising resolution makes the same 10,000 splats
+  scarcer in a different way, and mean b fell from +0.09 (200 px) to −0.25 (800 px). This was
+  noticed after the runs, not predicted before them.
+- **Consequence:** two frozen protocol choices (1,000 starting splats, no opacity reset) each
+  cost about 0.8 dB and most of the seed spread. Neither changes Beta's lead on lego, which is
+  +0.42, +0.38, +0.41 and +0.45 dB under the protocol, a full start, resets and 40,000
+  iterations.
+
 ## Claims that were corrected
 
 | Earlier claim | What replaced it | What forced the change |
@@ -177,6 +197,7 @@ in progress.
 | b spread predicts the gain, with two unexplained exceptions | The exceptions are the floater scenes | Region split |
 | The seed's starting splats decide where a floater forms | The same floater appears in a same-seed repeat; it is a weak spot of the scene, hit partly by chance | Same-seed repeats |
 | b spread tracks the gain | From a full start b spreads half as much and the gain is the same | Full-start runs |
+| Opacity reset will cost quality | It adds 0.8 dB on lego | Opacity-reset runs |
 
 ## Predictions for the runs in progress, written before their results
 
@@ -199,15 +220,15 @@ All are lego, both arms, 10k splats, off-protocol side runs.
   should grow with resolution. If it follows splats per unit of detail (step 7), the lead should
   shrink at 800 px, where 10k splats are relatively scarcer.
 
-### How the first three predictions came out
+### How the predictions came out
 
 | Prediction | Outcome |
 |---|---|
 | Same-seed repeats agree to well under 0.3 dB if the seed decides everything | Spread 0.12 dB: mostly, but chance alone is a real share, and it can reproduce the "seed 2" floater |
 | A full start changes the seed spread, direction unknown | Spread falls to the chance floor for the Gaussian; quality rises 0.9 dB |
 | 40,000 iterations shrinks the spread if defects are under-training | Both arms gain 0.5 dB, so 20,000 is under-trained; two seeds cannot say anything about spread |
-
-The opacity-reset and resolution runs were still in progress when this was written.
+| Opacity reset cuts the spread and removes runs of bad views, at a cost in PSNR | Spread cut and bad views gone: right. Cost in PSNR: wrong, it rose 0.8 dB |
+| Resolution: lead grows (boundary sharpness) or shrinks (splats per detail) | Neither; +0.49, +0.33, +0.66 dB with two seeds each is no trend |
 
 ## Still untested
 
