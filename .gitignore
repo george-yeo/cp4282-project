@@ -6,3 +6,4 @@ outputs/
 runs/
 runs_*/
 figures/_work/
+.venv-figs/
