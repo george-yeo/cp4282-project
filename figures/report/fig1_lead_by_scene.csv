@@ -1,0 +1,17 @@
+setting,scene,seed_pairs,mean_lead_db,lead_seed0,lead_seed1,lead_seed2,lead_seed3
+"Protocol (1,000 starting splats)",chair,2,-0.185,-0.454,0.083
+"Protocol (1,000 starting splats)",ship,2,-0.102,-0.200,-0.004
+"Protocol (1,000 starting splats)",materials,2,0.034,0.031,0.038
+"Protocol (1,000 starting splats)",mic,2,0.040,-0.032,0.112
+"Protocol (1,000 starting splats)",drums,2,0.221,0.183,0.259
+"Protocol (1,000 starting splats)",lego,4,0.417,0.469,0.180,0.552,0.468
+"Protocol (1,000 starting splats)",hotdog,2,0.535,0.573,0.496
+"Protocol (1,000 starting splats)",ficus,2,0.651,0.808,0.493
+"Full start (10,000 starting splats)",chair,2,0.094,0.064,0.123
+"Full start (10,000 starting splats)",ship,2,0.240,0.275,0.205
+"Full start (10,000 starting splats)",materials,2,-0.022,-0.008,-0.037
+"Full start (10,000 starting splats)",mic,2,0.027,-0.012,0.067
+"Full start (10,000 starting splats)",drums,2,0.097,0.077,0.116
+"Full start (10,000 starting splats)",lego,4,0.380,0.463,0.411,0.314,0.334
+"Full start (10,000 starting splats)",hotdog,2,0.045,0.048,0.042
+"Full start (10,000 starting splats)",ficus,2,0.774,0.781,0.766
