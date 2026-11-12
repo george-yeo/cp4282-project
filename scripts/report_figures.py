@@ -196,7 +196,7 @@ def db_ticks(ax, lo=-0.6, hi=1.0, step=0.2):
 # ---------------------------------------------------------------- figure 0
 
 def fig_kernel_profiles(args):
-    r = np.linspace(0, 3.4, 681)
+    r = np.linspace(0, 4.2, 841)
     q = r * r
     fig, ax = plt.subplots(figsize=(6.5, 3.5))
     fig.subplots_adjust(left=0.10, right=0.97, top=0.86, bottom=0.15)
@@ -210,14 +210,35 @@ def fig_kernel_profiles(args):
     for label, color, y in curves:
         ax.plot(r, y, color=color, linewidth=2, solid_capstyle="round", label=label)
         rows += [[label, f"{ri:.2f}", f"{yi:.4f}"] for ri, yi in zip(r[::20], y[::20])]
+    # Beyond 3 sigma the Beta kernel is exactly zero; the Gaussian only gets small.
+    ax.axvspan(3, 4.2, facecolor="#efeeea", edgecolor="none", zorder=0)
     ax.axvline(3, color=ZERO, linewidth=0.8)
-    ax.text(3.03, 0.5, "Beta ends\nat 3\u03c3", fontsize=8, color=INK_2, va="center")
+    ax.text(3.07, 0.99, "Beyond 3\u03c3", fontsize=8.5, fontweight="semibold", color=INK, va="top")
+    ax.text(3.07, 0.91, "Beta: exactly 0\nGaussian: still above 0", fontsize=8, color=INK,
+            va="top", linespacing=1.35)
+    inset = ax.inset_axes([3.32, 0.13, 0.82, 0.50], transform=ax.transData)
+    for label, color, y in curves:
+        inset.plot(r, y, color=color, linewidth=2, solid_capstyle="round")
+    inset.axvline(3, color=ZERO, linewidth=0.8)
+    inset.set_xlim(2.7, 4.2)
+    inset.set_ylim(-0.0025, 0.045)
+    inset.set_xticks([3, 4])
+    inset.set_xticklabels(["3\u03c3", "4\u03c3"])
+    inset.set_yticks([0, 0.02, 0.04])
+    inset.set_yticklabels(["0", "0.02", "0.04"])
+    inset.tick_params(labelsize=7)
+    inset.set_title("The tail, zoomed 20\u00d7", fontsize=7.5, loc="left", color=INK_2, pad=3)
+    inset.text(3.2, 0.013, "Gaussian", fontsize=7, color=INK_2)
+    inset.text(3.72, 0.0035, "Beta", fontsize=7, color=INK_2)
+    inset.set_facecolor(SURFACE)
+    for side in ("top", "right", "left", "bottom"):
+        inset.spines[side].set_color(GRID)
     ax.text(2.1, 0.80, "flatter, box-like", fontsize=8, color=INK_2)
     ax.text(0.42, 0.20, "sharper\npeak", fontsize=8, color=INK_2, ha="center")
-    ax.set_xlim(0, 3.4)
+    ax.set_xlim(0, 4.2)
     ax.set_ylim(0, 1.03)
-    ax.set_xticks([0, 1, 2, 3])
-    ax.set_xticklabels(["0", "1\u03c3", "2\u03c3", "3\u03c3"])
+    ax.set_xticks([0, 1, 2, 3, 4])
+    ax.set_xticklabels(["0", "1\u03c3", "2\u03c3", "3\u03c3", "4\u03c3"])
     ax.set_yticks([0, 0.25, 0.5, 0.75, 1])
     ax.set_yticklabels(["0", "0.25", "0.5", "0.75", "1"])
     ax.set_xlabel("Distance from the splat centre")
