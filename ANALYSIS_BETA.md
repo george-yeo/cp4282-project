@@ -43,7 +43,12 @@ cost about 0.8 dB on lego and account for most of the seed-to-seed spread (point
 - 18 seed pairs: mean B − A = +0.22 dB, standard deviation of the pair differences 0.32 dB,
   so a standard error of about 0.075 dB (t ≈ 3).
 - B wins 14/18 pairs on PSNR and 15/18 on LPIPS.
-- Time per iteration is within ±2% of A. B stores one extra float per splat.
+- Counting each scene once instead of each pair: the mean of the eight scene leads is +0.20 dB
+  with a standard error of 0.11 dB (t ≈ 1.9, six of eight scenes positive). Pairs from one
+  scene are not independent, so this is the fairer test of "does it hold for a new scene", and
+  eight scenes are too few to settle it.
+- B takes about 3% longer per iteration (7.1 against 6.9 ms on average; the ratio within a
+  pair runs from 0.98 to 1.15). B stores one extra float per splat.
 - Seed noise: lego A over 4 seeds is 27.12 ± 0.30 dB. Per-scene differences below about 0.3 dB
   are not distinguishable from noise with 2 seeds.
 - Chair is the only scene with a clear loss, and it comes from one seed (−0.45); the other seed
@@ -203,8 +208,9 @@ gets about twice the optimisation, so the +0.6–0.7 dB is extra training, not t
 - The densifier rows are consistent but not the same experiment (MCMC there, split/clone here).
 - New here: the frozen-b ablation (point 2) and the learned-b statistics (points 4, 5, 7). The
   paper reports neither.
-- The paper's numbers above were read from the arXiv HTML and should be checked against the PDF
-  before they are quoted.
+- The paper's numbers above were read from the arXiv HTML and re-read on 12 Nov 2026 (v2): they
+  match. The kernel-only figures are the first two rows of its Table 3, which compare the two
+  kernels with MCMC densification and SH colour on both sides.
 
 ## 11. Fewer training views (q4): the lead holds at 50 views, not reliably at 25
 
@@ -433,6 +439,8 @@ The main comparison (point 1) repeated with 10,000 starting splats instead of 1,
 - **The mean lead is the same: +0.22 dB over 18 pairs** (protocol: +0.22). The standard
   deviation of the pair differences is 0.25 dB (protocol 0.32), so the standard error is
   0.059 dB (t ≈ 3.8). B wins 15/18 pairs on PSNR and 16/18 on LPIPS (protocol 14/18, 15/18).
+  Counting each scene once: +0.20 dB, standard error 0.09 dB (t ≈ 2.2, seven of eight scenes
+  positive).
 - **The lead is far more repeatable.** The two seeds of a scene disagree on B − A by 0.04 dB on
   average, against 0.21 dB under the protocol. The largest disagreement is 0.08 dB (mic);
   under the protocol it was 0.54 dB (chair). Most of this comes from Beta: the gap between a
