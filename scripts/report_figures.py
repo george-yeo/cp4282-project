@@ -16,7 +16,8 @@ Arms: A Gaussian, B Beta with learnable b, B0 Beta with b frozen at 0.
 
 With --for-slides the figures are written to figures/slides as PNG only, without the title line
 (the slide carries it) and cropped to their content. That mode also writes a protocol-only
-version of fig1 and, when --data-root is given, a three-panel floater example.
+version of fig1, the panels of the lego b-map without its small labels and, when --data-root is
+given, a three-panel floater example.
 
 Needs matplotlib, which the trainer environment does not have. To keep that environment
 unchanged, use a separate one that reuses its packages:
@@ -244,6 +245,18 @@ def floater_example(args, view=84, seed=2):
     os.makedirs(args.out, exist_ok=True)
     out = os.path.join(args.out, f"floaters_lego_view{view}_seed{seed}.png")
     sheet.save(out)
+    print("wrote", out)
+
+
+def bmap_panels(args, source=os.path.join("figures", "b_map_B_lego_s0.png")):
+    """The six panels of the lego b-map (scripts/b_map.py) without its title, labels and scale."""
+    from PIL import Image
+    if not os.path.exists(source):
+        print("skipped the b-map panels:", source, "not found")
+        return
+    os.makedirs(args.out, exist_ok=True)
+    out = os.path.join(args.out, "b_map_lego_panels.png")
+    Image.open(source).convert("RGB").crop((24, 88, 1248, 890)).save(out)
     print("wrote", out)
 
 
@@ -493,6 +506,7 @@ def main():
     fig_kernel_profiles(args)
     if SLIDES:
         fig_lead_by_scene(args, protocol_only=True)
+        bmap_panels(args)
         if args.data_root:
             floater_example(args)
     fig_lead_by_scene(args)
