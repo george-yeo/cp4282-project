@@ -1,9 +1,17 @@
 series,arm,scene,difference_from_A_db
 Kernel shape only (b frozen at 0),B0,chair,-0.166
+Kernel shape only (b frozen at 0),B0,ship,-0.176
+Kernel shape only (b frozen at 0),B0,mic,-0.252
+Kernel shape only (b frozen at 0),B0,materials,-0.026
+Kernel shape only (b frozen at 0),B0,drums,-0.051
 Kernel shape only (b frozen at 0),B0,lego,0.284
 Kernel shape only (b frozen at 0),B0,hotdog,0.156
 Kernel shape only (b frozen at 0),B0,ficus,-0.004
 Learnable b,B,chair,-0.454
+Learnable b,B,ship,-0.200
+Learnable b,B,mic,-0.032
+Learnable b,B,materials,0.031
+Learnable b,B,drums,0.183
 Learnable b,B,lego,0.469
 Learnable b,B,hotdog,0.573
 Learnable b,B,ficus,0.808
