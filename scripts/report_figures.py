@@ -162,11 +162,13 @@ def title(fig, x, y, text):
         fig.text(x, y, text, fontsize=10.5, fontweight="semibold")
 
 
-def save(fig, out, name, rows, header):
+def save(fig, out, name, rows, header, transparent=False):
+    """Write one figure. `transparent` (slides only) leaves the background clear, for a figure
+    that sits straight on the slide instead of on a white card."""
     os.makedirs(out, exist_ok=True)
     if SLIDES:
         fig.savefig(os.path.join(out, name + ".png"), dpi=300, bbox_inches="tight",
-                    pad_inches=0.06)
+                    pad_inches=0.06, transparent=transparent)
         plt.close(fig)
         print("wrote", os.path.join(out, name + ".png"))
         return
@@ -350,7 +352,7 @@ def kernel_equations(args):
     for y, text, color, size in lines:
         fig.text(0.02, y, text, color=color, fontsize=size or 10,
                  fontweight="normal" if size else "semibold", va="bottom")
-    save(fig, args.out, "kernel_equations", [], [])
+    save(fig, args.out, "kernel_equations", [], [], transparent=True)
 
 
 def kernel_matrix(args):
@@ -390,18 +392,19 @@ def kernel_matrix(args):
 
 
 def kernel_footprints(args, size=280, extent=3.4):
-    """One splat seen from above at b = -2, 0 and +2: white where alpha is 0, dark where it is 1."""
+    """One splat seen from above at b = -2, 0 and +2: one dark colour whose transparency is the
+    kernel value, so the picture is clear where alpha is 0 and solid where it is 1."""
     from PIL import Image
     axis = np.linspace(-extent, extent, size)
     xx, yy = np.meshgrid(axis, axis)
     q = xx ** 2 + yy ** 2
-    ink = np.array([0x14, 0x21, 0x3D], dtype=float)
     os.makedirs(args.out, exist_ok=True)
     for b, tag in ((-2, "bm2"), (0, "b0"), (2, "bp2")):
-        alpha = beta_kernel(q, float(b))[..., None]
-        rgb = 255 * (1 - alpha) + ink * alpha
+        rgba = np.empty((size, size, 4), np.uint8)
+        rgba[..., :3] = (0x14, 0x21, 0x3D)
+        rgba[..., 3] = (255 * beta_kernel(q, float(b))).round().astype(np.uint8)
         out = os.path.join(args.out, f"kernel_footprint_{tag}.png")
-        Image.fromarray(rgb.round().astype(np.uint8)).save(out)
+        Image.fromarray(rgba, "RGBA").save(out)
         print("wrote", out)
 
 
