@@ -77,7 +77,9 @@ in progress.
 ### 6. Is the gain from the kernel shape or from learning b?
 
 - **Test:** arm B0, the Beta kernel with b frozen at 0.
-- **Result:** B0 ≈ A (+0.07 dB on four scenes); B − B0 = +0.28 dB. The learnable b carries it.
+- **Result:** B0 ≈ A (−0.03 dB over eight scenes, seed 0); B − B0 = +0.20 dB. The learnable
+  b carries it. (First measured on four scenes: +0.07 and +0.28 dB. The other four were added
+  on 12 Nov 2026 and did not change the conclusion.)
 - **Expected otherwise:** the compact kernel shape was expected to help on its own. It did not.
 
 ### 7. Does Beta help most when splats are scarce?
