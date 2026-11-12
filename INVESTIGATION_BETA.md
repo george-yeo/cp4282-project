@@ -86,7 +86,7 @@ in progress.
 
 - **Expectation:** yes; that is the usual argument for a more flexible primitive.
 - **Test:** budget sweep at 25%, 50%, 90% and 100% of capacity.
-- **Result:** the opposite. The lead grew with the budget on both scenes.
+- **Result:** the opposite. The lead was smallest at the smallest budget on both scenes.
 - **Follow-up claim:** "the lead keeps growing with capacity", supported by the pilot's 1.5 dB.
 - **Test of that claim:** lego at 30k on test, two seeds. Lead +0.81 dB, double the 10k lead.
   The pilot's 1.5 dB was an overestimate.

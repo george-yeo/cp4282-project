@@ -15,8 +15,8 @@ flatter, more box-like splat.
 ## Headline
 
 Beta with a learnable b gives a small, consistent gain over the Gaussian at no extra cost. The
-gain comes from the learnable b, not from the kernel shape. It grows with the splat budget up to
-10k on both scenes tested and does not shrink beyond that. It shows up mainly at object
+gain comes from the learnable b, not from the kernel shape. It is smallest at the smallest splat budget
+on both scenes tested and does not shrink at larger ones. It shows up mainly at object
 boundaries. On lego it stays between +0.3 and +0.7 dB under every training variant tried
 (full-capacity start, opacity reset, twice the iterations, 200 to 800 px).
 
@@ -82,7 +82,7 @@ cost about 0.8 dB on lego and account for most of the seed-to-seed spread (point
 - At seed 0 alone B − A is +0.17 dB over the eight scenes; the +0.22 dB headline is over all
   18 seed pairs.
 
-## 3. The lead grows with the splat budget up to 10k, and does not shrink beyond
+## 3. The lead is smallest at the smallest budget, and does not shrink at larger ones
 
 Lego, B − A:
 
@@ -107,7 +107,9 @@ Ficus, B − A (seed 0): +0.45 at 2.5k, +0.71 at 5k, +0.81 at 10k.
 | 0 | 25.97 | 27.21 | +1.24 | +0.81 |
 | 1 | 26.26 | 26.51 | +0.25 | +0.49 |
 
-- Up to 10k the lead grows with the budget on both scenes.
+- The lead is smallest at 2.5k on both scenes and larger at every bigger budget. From 5k to
+  10k it rises on ficus (+0.71 → +0.81 at seed 0) and does not on lego (+0.53 → +0.47 at
+  seed 0, +0.42 over four seeds); both changes are inside the noise of one seed pair.
 - From 10k to 30k it roughly doubles on lego (both seeds). On ficus it does not move on average
   (+0.75 vs +0.65): one seed goes up, the other down.
 - Ficus at 30k is a poor regime for both arms: PSNR is lower than at 10k (A 26.57 → 26.12,

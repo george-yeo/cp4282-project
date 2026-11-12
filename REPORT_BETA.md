@@ -169,8 +169,9 @@ against 27.50 dB on ficus. DBS likewise uses a densifier that ignores the kernel
 *Figure 2. Top: Beta's lead against the splat budget. Bottom: the mean learned b.*
 
 I expected Beta to help most when splats are scarce, because one flexible splat could stand in
-for several Gaussians. The opposite holds. The lead is smallest at 2,500 splats and grows up to
-10,000 on both scenes. At 30,000 (a side check) it roughly doubles on lego and stays level on
+for several Gaussians. The opposite holds. The lead is smallest at 2,500 splats and larger at
+every bigger budget on both scenes; between 5,000 and 10,000 it does not change by more than
+the noise. At 30,000 (a side check) it roughly doubles on lego and stays level on
 ficus, though the two seeds disagree widely there.
 
 The learned b explains part of this. With few splats, b drifts negative on lego: splats flatten
