@@ -60,14 +60,27 @@ cost about 0.8 dB on lego and account for most of the seed-to-seed spread (point
 |---|---|---|---|---|---|
 | lego | 27.24 | 27.52 | 27.71 | +0.28 | +0.19 |
 | ficus | 26.69 | 26.69 | 27.50 | 0.00 | +0.81 |
-| hotdog | 32.90 | 33.05 | 33.47 | +0.15 | +0.42 |
-| chair | 29.95 | 29.79 | 29.50 | −0.16 | −0.29 |
-| Mean | | | | +0.07 | +0.28 |
+| hotdog | 32.90 | 33.05 | 33.47 | +0.16 | +0.42 |
+| chair | 29.95 | 29.79 | 29.50 | −0.17 | −0.29 |
+| drums | 23.78 | 23.73 | 23.96 | −0.05 | +0.23 |
+| materials | 24.51 | 24.48 | 24.54 | −0.03 | +0.06 |
+| mic | 30.54 | 30.29 | 30.51 | −0.25 | +0.22 |
+| ship | 26.46 | 26.28 | 26.26 | −0.18 | −0.02 |
+| Mean (8 scenes) | | | | −0.03 | +0.20 |
 
-- Swapping the Gaussian for a fixed-shape Beta (compact support, b = 0) is about neutral.
-- Letting each splat learn its own b supplies most of the gain on ficus and hotdog.
+- Swapping the Gaussian for a fixed-shape Beta (compact support, b = 0) is about neutral:
+  −0.03 dB on average (standard error 0.06), positive on 2 of 8 scenes.
+- Letting each splat learn its own b adds +0.20 dB on average (standard error 0.11), positive
+  on 6 of 8 scenes. Most of it is on ficus and hotdog.
 - The budget sweep agrees: B0 stays within 0.2 dB of A at 25% and 50% capacity, while B leads both.
 - Single seed per cell, so the lego split between "shape" and "learnable b" is within noise.
+  Only mic's frozen-b loss (−0.25 dB) is clearly outside the ±0.16 dB spread of one seed pair.
+- The first version of this table had four scenes (lego, ficus, hotdog, chair) and gave
+  +0.07 and +0.28 dB. Drums, materials, mic and ship were added on 12 Nov 2026 under the same
+  protocol. The conclusion is the same and the frozen kernel now looks slightly worse, not
+  slightly better, than the Gaussian.
+- At seed 0 alone B − A is +0.17 dB over the eight scenes; the +0.22 dB headline is over all
+  18 seed pairs.
 
 ## 3. The lead grows with the splat budget up to 10k, and does not shrink beyond
 
@@ -287,9 +300,11 @@ gives B's change in total squared error, and how much of it comes through each r
 - **Ficus is almost all silhouette.** 78% of the Gaussian's error on ficus sits in the
   silhouette band (thin leaves against white), and that is where Beta's gain is.
 - **Hotdog gains inside the object**, on both smooth and detailed areas.
-- **The learnable b is what sharpens boundaries.** On the four ablation scenes (seed 0), B0
-  changes silhouette error by −7%, −1%, +25% and +4% against A (no consistent effect), while B
-  against B0 changes it by −10%, −17%, −20% and −2% (lower in all four).
+- **The learnable b is what sharpens boundaries.** At seed 0, B0 changes silhouette error
+  against A by −7% (lego), −1% (ficus), +25% (hotdog), +4% (chair), +4% (drums), −2%
+  (materials), +8% (mic) and +2% (ship): no consistent effect. B against B0 changes it by
+  −10%, −17%, −20%, −2%, −9%, −2%, −7% and +3% in the same order: lower in 7 of 8, ship being
+  the exception.
 - **Ship's loss is floaters, not the kernel's fit.** Inside the ship B is better (smooth −8%,
   detail −4%), but its background error is 5.4× the Gaussian's on seed 0 and 1.9× on seed 1.
   Without the background region B would be ahead by about 4%.
