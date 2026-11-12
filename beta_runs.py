@@ -118,7 +118,8 @@ def make_config(spec: dict, run_dir: Path, args, capacity: int, loss: str) -> di
     if loss not in ("sparse", "dense"):
         raise ValueError(f"loss must be 'sparse' or 'dense', got {loss!r}")
     kernel = {
-        "type": "gaussian", "learn_b": True, "b_init": 0.0, "b_min": -2.0, "b_max": 2.0,
+        "type": "gaussian", "learn_b": True, "b_init": 0.0,
+        "b_min": -float(args.b_clamp), "b_max": float(args.b_clamp),
         "moment_match_init": True, "moment_match": args.moment_match,
         "densifier": "course", "moment_dim": 2,
     }
@@ -448,6 +449,8 @@ def main():
                     help="Training loss. Default: runs/chosen.json (pick-pilot).")
     ap.add_argument("--opacity-reset-interval", type=int, default=0,
                     help="Side experiments only; the protocol keeps opacity reset off (0).")
+    ap.add_argument("--b-clamp", type=float, default=2.0,
+                    help="b is clamped to [-B, B]. Protocol: 2. Other values are side experiments.")
     ap.add_argument("--moment-match", default="truncated", choices=["truncated", "untruncated"])
     ap.add_argument("--sweep-scenes", nargs="+", default=["lego", "ficus"])
     ap.add_argument("--b0-scenes", nargs="+", default=["lego", "ficus", "chair", "hotdog"])
