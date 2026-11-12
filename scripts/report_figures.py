@@ -16,8 +16,9 @@ Arms: A Gaussian, B Beta with learnable b, B0 Beta with b frozen at 0.
 
 With --for-slides the figures are written to figures/slides as PNG only, without the title line
 (the slide carries it) and cropped to their content. That mode also writes a protocol-only
-version of fig1, the panels of the lego b-map without its small labels and, when --data-root is
-given, a three-panel floater example.
+version of fig1, the panels of the lego b-map without its small labels, three images that
+introduce the kernel (its equations, its values on a pixel grid, and the footprint of one splat
+at b = -2, 0 and +2) and, when --data-root is given, a three-panel floater example.
 
 Needs matplotlib, which the trainer environment does not have. To keep that environment
 unchanged, use a separate one that reuses its packages:
@@ -246,6 +247,80 @@ def floater_example(args, view=84, seed=2):
     out = os.path.join(args.out, f"floaters_lego_view{view}_seed{seed}.png")
     sheet.save(out)
     print("wrote", out)
+
+
+def beta_kernel(q, b):
+    """Beta kernel value at squared distance q (in sigma^2): (1 - q/9)^(4 e^b), zero from q = 9."""
+    return np.where(q < 9, np.clip(1 - q / 9, 0, None) ** (4 * np.exp(b)), 0.0)
+
+
+def kernel_equations(args):
+    """The two kernels and their shared distance q, typeset."""
+    fig = plt.figure(figsize=(4.2, 2.7))
+    lines = [
+        (0.90, "Gaussian", INK_2, None),
+        (0.74, r"$\alpha = o \, e^{-q/2}$", INK, 17),
+        (0.54, "Beta, with one learnable b per splat", "#1c5cab", None),
+        (0.38, r"$\alpha = o \, (1 - q/9)^{\,4e^{b}}$", INK, 17),
+        (0.18, "The same distance q in both", INK_2, None),
+        (0.03, r"$q = (\mathbf{x} - \mu)^{T} \, \Sigma^{-1} \, (\mathbf{x} - \mu)$", INK, 15),
+    ]
+    for y, text, color, size in lines:
+        fig.text(0.02, y, text, color=color, fontsize=size or 10,
+                 fontweight="normal" if size else "semibold", va="bottom")
+    save(fig, args.out, "kernel_equations", [], [])
+
+
+def kernel_matrix(args):
+    """Each kernel as a grid of numbers: alpha / opacity at pixel offsets of -3..3 sigma."""
+    offsets = np.arange(-3, 4)
+    xx, yy = np.meshgrid(offsets, offsets)
+    q = (xx ** 2 + yy ** 2).astype(float)
+    grids = [("Gaussian", np.exp(-q / 2)), ("Beta, b = 0", beta_kernel(q, 0.0))]
+    fig, axes = plt.subplots(1, 2, figsize=(4.8, 2.6))
+    fig.subplots_adjust(left=0.07, right=0.99, top=0.90, bottom=0.10, wspace=0.16)
+    blue = np.array(matplotlib.colors.to_rgb(BLUE))
+    for ax, (name, grid) in zip(axes, grids):
+        for i, y in enumerate(offsets):
+            for j, x in enumerate(offsets):
+                v = float(grid[i, j])
+                face = 1 - (1 - blue) * 0.9 * v
+                ax.add_patch(Rectangle((x - 0.5, y - 0.5), 1, 1, facecolor=face,
+                                       edgecolor=SURFACE, linewidth=1.5))
+                if v == 0:
+                    label, color = "0", "#9a9992"
+                elif v < 0.005:
+                    label, color = "\u22480", INK_2  # small but not zero
+                else:
+                    label, color = (f"{v:.2f}" if v < 0.995 else "1"), (SURFACE if v > 0.55 else INK)
+                ax.text(x, y, label, ha="center", va="center", fontsize=8, color=color)
+        ax.set_xlim(-3.5, 3.5)
+        ax.set_ylim(-3.5, 3.5)
+        ax.set_aspect("equal")
+        ax.set_xticks(offsets)
+        ax.set_xticklabels([("0" if o == 0 else signed(o, 0) + "\u03c3") for o in offsets], fontsize=7)
+        ax.set_yticks(offsets)
+        ax.set_yticklabels([("0" if o == 0 else signed(o, 0) + "\u03c3") for o in offsets], fontsize=7)
+        ax.set_title(name, loc="left", fontsize=9.5)
+        for side in ("top", "right", "left", "bottom"):
+            ax.spines[side].set_visible(False)
+    save(fig, args.out, "kernel_matrix", [], [])
+
+
+def kernel_footprints(args, size=280, extent=3.4):
+    """One splat seen from above at b = -2, 0 and +2: white where alpha is 0, dark where it is 1."""
+    from PIL import Image
+    axis = np.linspace(-extent, extent, size)
+    xx, yy = np.meshgrid(axis, axis)
+    q = xx ** 2 + yy ** 2
+    ink = np.array([0x14, 0x21, 0x3D], dtype=float)
+    os.makedirs(args.out, exist_ok=True)
+    for b, tag in ((-2, "bm2"), (0, "b0"), (2, "bp2")):
+        alpha = beta_kernel(q, float(b))[..., None]
+        rgb = 255 * (1 - alpha) + ink * alpha
+        out = os.path.join(args.out, f"kernel_footprint_{tag}.png")
+        Image.fromarray(rgb.round().astype(np.uint8)).save(out)
+        print("wrote", out)
 
 
 def bmap_panels(args, source=os.path.join("figures", "b_map_B_lego_s0.png")):
@@ -507,6 +582,9 @@ def main():
     if SLIDES:
         fig_lead_by_scene(args, protocol_only=True)
         bmap_panels(args)
+        kernel_equations(args)
+        kernel_matrix(args)
+        kernel_footprints(args)
         if args.data_root:
             floater_example(args)
     fig_lead_by_scene(args)
