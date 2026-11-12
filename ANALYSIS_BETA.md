@@ -81,6 +81,20 @@ cost about 0.8 dB on lego and account for most of the seed-to-seed spread (point
   slightly better, than the Gaussian.
 - At seed 0 alone B − A is +0.17 dB over the eight scenes; the +0.22 dB headline is over all
   18 seed pairs.
+- **The three frozen-b losses do not repeat.** A second B0 seed on mic, ship and chair gives
+  B0 − A of −0.02, +0.05 and +0.04 dB (seed 0: −0.25, −0.18, −0.17). So they are properties of
+  those runs, not of the frozen kernel on those scenes.
+- **The seed-0 losses are stray splats.** The views where B0 or B is more than 0.5 dB behind
+  come in runs of neighbouring test cameras: ship views 88–106 (B0) and 88–111 (B), chair
+  views 0–20 and 178–199 (B), mic views 142–165 (B0). Outside those views the difference is
+  +0.12 dB on ship (both arms), +0.02 dB on chair (B) and −0.07 dB on mic (B0). The renders
+  show the cause: splats under ship's basin, a pale splat in front of the chair's seat, a gap
+  on one leg of the mic stand. On ship the background error is 5.0× (B0) and 5.4× (B) the
+  Gaussian's while the error inside the object is lower.
+- Not explained: why, at the same seed, both Beta arms left these splats and the Gaussian did
+  not. Point 19 counts more seed-dependent bad views for B than for A (218 against 149 of
+  1,600), so Beta looks more prone to them from a 1,000-splat start, but no mechanism was
+  tested.
 
 ## 3. The lead is smallest at the smallest budget, and does not shrink at larger ones
 
