@@ -270,6 +270,67 @@ def floater_example(args, view=84, seed=2):
     print("wrote", out)
 
 
+def view_psnr(root, arm, scene, seed, view):
+    """Test PSNR of one view of one run."""
+    path = os.path.join(run_dir(root, arm, scene, seed), "test_metrics.csv")
+    with open(path, newline="") as f:
+        for r in csv.DictReader(f):
+            if int(r["view"]) == view:
+                return float(r["psnr_db"])
+    raise ValueError(f"{path}: no view {view}")
+
+
+def render_examples(args, scenes=("lego", "ficus", "materials", "ship"), view=0, seed=0):
+    """Ground truth, Gaussian and Beta renders of one test view for four scenes.
+
+    Each scene's three pictures share one square crop around the object, taken from the alpha of
+    the ground truth, so the object fills the panel. The PSNR under a render is that view's.
+    """
+    from PIL import Image
+    cell, gap, group_gap, head, foot, row_gap = 2.3, 0.08, 0.6, 0.34, 0.38, 0.14  # inches
+    cols = 2
+    rows = (len(scenes) + cols - 1) // cols
+    triplet = 3 * cell + 2 * gap
+    width = cols * triplet + (cols - 1) * group_gap
+    row_h = head + cell + foot
+    height = rows * row_h + (rows - 1) * row_gap
+    fig = plt.figure(figsize=(width, height))
+    for i, scene in enumerate(scenes):
+        gt = Image.open(os.path.join(args.data_root, scene, "test", f"r_{view}.png"))
+        gt = gt.convert("RGBA").resize((400, 400), Image.LANCZOS)
+        ys, xs = np.nonzero(np.asarray(gt)[..., 3] > 8)
+        side = min(400, int(1.08 * max(xs.max() - xs.min(), ys.max() - ys.min())) + 1)
+        x0 = int(np.clip((xs.min() + xs.max()) / 2 - side / 2, 0, 400 - side))
+        y0 = int(np.clip((ys.min() + ys.max()) / 2 - side / 2, 0, 400 - side))
+        box = (x0, y0, x0 + side, y0 + side)
+        white = Image.new("RGBA", gt.size, (255, 255, 255, 255))
+        panels = [(Image.alpha_composite(white, gt).convert("RGB"), "Ground truth")]
+        for arm, name in (("A", "Gaussian"), ("B", "Beta")):
+            run = run_dir(args.runs, arm, scene, seed)
+            im = Image.open(os.path.join(run, "test_renders", f"r_{view}.png")).convert("RGB")
+            panels.append((im, f"{name} {view_psnr(args.runs, arm, scene, seed, view):.2f} dB"))
+        left = (i % cols) * (triplet + group_gap)
+        top = height - (i // cols) * (row_h + row_gap)
+        fig.text(left / width, (top - 0.02) / height, scene.capitalize(), fontsize=17,
+                 fontweight="semibold", va="top")
+        for j, (im, label) in enumerate(panels):
+            x = left + j * (cell + gap)
+            ax = fig.add_axes([x / width, (top - head - cell) / height, cell / width,
+                               cell / height])
+            ax.imshow(np.asarray(im.crop(box)), interpolation="lanczos")
+            ax.set_xticks([])
+            ax.set_yticks([])
+            for side_name in ("top", "right", "left", "bottom"):
+                ax.spines[side_name].set_color(GRID)
+            fig.text(x / width, (top - head - cell - 0.07) / height, label, fontsize=16.5,
+                     color=INK, va="top")
+    os.makedirs(args.out, exist_ok=True)
+    out = os.path.join(args.out, f"renders_truth_gaussian_beta_view{view}_seed{seed}.png")
+    fig.savefig(out, dpi=200, bbox_inches="tight", pad_inches=0.04)
+    plt.close(fig)
+    print("wrote", out)
+
+
 def beta_kernel(q, b):
     """Beta kernel value at squared distance q (in sigma^2): (1 - q/9)^(4 e^b), zero from q = 9."""
     return np.where(q < 9, np.clip(1 - q / 9, 0, None) ** (4 * np.exp(b)), 0.0)
@@ -593,7 +654,7 @@ def main():
     ap.add_argument("--for-slides", action="store_true",
                     help="PNG only, no title line, cropped; also writes the slide-only figures.")
     ap.add_argument("--data-root", default=None,
-                    help="NeRF-synthetic folder; only needed for the floater example on slides.")
+                    help="NeRF-synthetic folder; only needed for the slide images that show renders.")
     args = ap.parse_args()
     global SLIDES
     SLIDES = args.for_slides
@@ -608,6 +669,7 @@ def main():
         kernel_footprints(args)
         if args.data_root:
             floater_example(args)
+            render_examples(args)
     fig_lead_by_scene(args)
     fig_ablation(args)
     fig_lead_vs_budget(args)
