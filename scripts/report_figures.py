@@ -333,6 +333,92 @@ def render_examples(args, scenes=("lego", "ficus", "materials", "ship"), view=0,
     print("wrote", out)
 
 
+def window_sums(a, size):
+    """Sum of `a` over every size x size window (valid positions only)."""
+    c = np.pad(a, ((1, 0), (1, 0))).cumsum(0).cumsum(1)
+    return c[size:, size:] - c[:-size, size:] - c[size:, :-size] + c[:-size, :-size]
+
+
+def zoom_examples(args, seed=0, size=100):
+    """One image per scene: a typical test view, and two zoomed patches of it as ground truth,
+    Gaussian and Beta.
+
+    The view is the one with the median Beta - Gaussian PSNR difference for that scene and seed,
+    so it is typical, not hand-picked. The two patches are chosen by a rule: the window where
+    Beta's squared error is furthest below the Gaussian's, and the window where it is furthest
+    above (not overlapping the first). Patches are enlarged with the same filter in all panels.
+    """
+    from PIL import Image
+    left_w, zoom, gap, col_gap, head, row_head, foot = 5.45, 2.4, 0.1, 0.35, 0.35, 0.3, 0.4
+    height = head + 2 * (row_head + zoom) + gap
+    width = left_w + col_gap + 3 * zoom + 2 * gap
+    os.makedirs(args.out, exist_ok=True)
+    for scene in SCENES:
+        a_run, b_run = run_dir(args.runs, "A", scene, seed), run_dir(args.runs, "B", scene, seed)
+        with open(os.path.join(a_run, "test_metrics.csv"), newline="") as f:
+            pa = np.array([float(r["psnr_db"]) for r in csv.DictReader(f)])
+        with open(os.path.join(b_run, "test_metrics.csv"), newline="") as f:
+            pb = np.array([float(r["psnr_db"]) for r in csv.DictReader(f)])
+        d = pb - pa
+        view = int(np.argsort(d)[len(d) // 2])
+        gt = Image.open(os.path.join(args.data_root, scene, "test", f"r_{view}.png"))
+        gt = gt.convert("RGBA").resize((400, 400), Image.LANCZOS)
+        gt = Image.alpha_composite(Image.new("RGBA", gt.size, (255, 255, 255, 255)), gt).convert("RGB")
+        ra = Image.open(os.path.join(a_run, "test_renders", f"r_{view}.png")).convert("RGB")
+        rb = Image.open(os.path.join(b_run, "test_renders", f"r_{view}.png")).convert("RGB")
+        g = np.asarray(gt, float)
+        ea = ((np.asarray(ra, float) - g) ** 2).mean(-1)
+        eb = ((np.asarray(rb, float) - g) ** 2).mean(-1)
+        gain = window_sums(ea - eb, size)  # > 0 where Beta has less error
+        y1, x1 = np.unravel_index(np.argmax(gain), gain.shape)
+        loss = -gain.copy()
+        ys, xs = np.ogrid[:loss.shape[0], :loss.shape[1]]
+        loss[(abs(ys - y1) < size) & (abs(xs - x1) < size)] = -np.inf
+        y2, x2 = np.unravel_index(np.argmax(loss), loss.shape)
+        behind = loss[y2, x2] > 0
+        rows = [((x1, y1), BLUE, "Where Beta is ahead most"),
+                ((x2, y2), ORANGE, "Where Beta is behind most" if behind
+                 else "Where Beta's lead is smallest")]
+
+        fig = plt.figure(figsize=(width, height))
+        ax = fig.add_axes([0, foot / height, left_w / width, (height - foot) / height])
+        ax.imshow(np.asarray(gt))
+        for (x, y), color, _ in rows:
+            ax.add_patch(Rectangle((x - 0.5, y - 0.5), size, size, fill=False, edgecolor=color,
+                                   linewidth=2.5))
+        ax.set_xticks([])
+        ax.set_yticks([])
+        for side in ("top", "right", "left", "bottom"):
+            ax.spines[side].set_color(GRID)
+        fig.text(0, (foot - 0.08) / height, f"Ground truth, test view {view}", fontsize=16.5,
+                 color=INK, va="top")
+        x0 = left_w + col_gap
+        cols = [(gt, "Ground truth"), (ra, f"Gaussian {pa[view]:.2f} dB"),
+                (rb, f"Beta {pb[view]:.2f} dB")]
+        for j, (_, label) in enumerate(cols):
+            fig.text((x0 + j * (zoom + gap)) / width, 1 - 0.02 / height, label, fontsize=16.5,
+                     color=INK, fontweight="semibold", va="top")
+        for i, ((x, y), color, label) in enumerate(rows):
+            top = height - head - i * (row_head + zoom + gap)
+            fig.text(x0 / width, (top - 0.02) / height, label, fontsize=15, color=INK_2, va="top")
+            for j, (im, _) in enumerate(cols):
+                patch = im.crop((x, y, x + size, y + size)).resize((6 * size, 6 * size), Image.LANCZOS)
+                zx = fig.add_axes([(x0 + j * (zoom + gap)) / width,
+                                   (top - row_head - zoom) / height, zoom / width, zoom / height])
+                zx.imshow(np.asarray(patch))
+                zx.set_xticks([])
+                zx.set_yticks([])
+                for side in ("top", "right", "left", "bottom"):
+                    zx.spines[side].set_color(color)
+                    zx.spines[side].set_linewidth(2.5)
+        out = os.path.join(args.out, f"zoom_{scene}_seed{seed}.png")
+        fig.savefig(out, dpi=200, bbox_inches="tight", pad_inches=0.04)
+        plt.close(fig)
+        lead = np.mean(leads(args.runs, scene, seeds_for(scene)))
+        print(f"wrote {out}: view {view} (B - A {d[view]:+.2f} dB, A {pa[view]:.2f}, B {pb[view]:.2f}); "
+              f"scene mean {lead:+.2f} dB; second patch {'behind' if behind else 'smallest lead'}")
+
+
 def beta_kernel(q, b):
     """Beta kernel value at squared distance q (in sigma^2): (1 - q/9)^(4 e^b), zero from q = 9."""
     return np.where(q < 9, np.clip(1 - q / 9, 0, None) ** (4 * np.exp(b)), 0.0)
@@ -687,6 +773,7 @@ def main():
         if args.data_root:
             floater_example(args)
             render_examples(args)
+            zoom_examples(args)
     fig_lead_by_scene(args)
     fig_ablation(args)
     fig_lead_vs_budget(args)
