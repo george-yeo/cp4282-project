@@ -12,7 +12,7 @@ iterations).
 - Beta is ahead by **+0.22 dB PSNR on average** over 18 seed-paired runs, with lower LPIPS in 15
   of 18, at about 3% more time per iteration and one extra float per splat.
 - The gain comes from **letting each splat learn b**. A Beta kernel with b frozen is about equal
-  to the Gaussian (+0.07 dB).
+  to the Gaussian (−0.03 dB).
 - The gain shows up **at object boundaries**. Splats on thin structures and edges learn a
   sharper peak, and large splats on smooth surfaces learn a flatter, box-like profile.
 - The gain is **not uniform across scenes**. Ficus (+0.65 dB) and lego (+0.42 dB) lead both
@@ -153,10 +153,11 @@ That is the small budget, the low resolution and the random start, and it applie
 
 *Figure 1. Frozen-b Beta (B0) and learnable-b Beta (B) against the Gaussian, seed 0.*
 
-Freezing b at 0 gives +0.07 dB on average over four scenes, which is inside the noise.
-Unfreezing it adds +0.28 dB on average: +0.81 dB on ficus and +0.42 dB on hotdog. On lego the
-frozen kernel already gains +0.28 dB, so the split there is unclear with one seed. On chair
-both variants lose.
+Freezing b at 0 gives −0.03 dB on average over the eight scenes (standard error 0.06), which
+is inside the noise; it is ahead of the Gaussian on only two scenes. Unfreezing it adds
++0.20 dB on average (standard error 0.11) and helps on six of the eight: +0.81 dB on ficus and
++0.42 dB on hotdog. On lego the frozen kernel already gains +0.28 dB, so the split there is
+unclear with one seed. On chair and ship both variants lose.
 
 The kernel-aware densifier (arm C) changes nothing: 27.75 against 27.71 dB on lego and 27.47
 against 27.50 dB on ficus. DBS likewise uses a densifier that ignores the kernel's shape.
@@ -198,8 +199,8 @@ inside the object, and smooth interior.
 - On ficus, 78% of the Gaussian's error sits in the silhouette band (thin leaves against a
   white background), and almost all of Beta's gain is there.
 - The learnable b is what does it: against the frozen kernel, learnable b lowers silhouette
-  error on all four ablation scenes, while the frozen kernel against the Gaussian has no
-  consistent effect.
+  error on seven of the eight scenes (not ship), while the frozen kernel against the Gaussian
+  has no consistent effect.
 
 So the mechanism is consistent across the evidence: a bounded kernel with a learnable profile
 draws boundaries with less blur than a Gaussian's tails allow.
