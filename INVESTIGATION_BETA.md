@@ -266,8 +266,8 @@ All are lego, both arms, 10k splats, off-protocol side runs.
 ## Still untested
 
 - Why hotdog's lead depends on the starting splat count. (The earlier question, whether the b
-  clamp caps hotdog's gain, matters less now: from a full start nothing reaches the clamp and
-  the lead is gone.)
+  clamp caps hotdog's gain, is closed: widening the clamp to [−4, 4] changes hotdog by
+  +0.03 dB and lego by −0.01 dB, ANALYSIS_BETA point 7.)
 - Why a full start lowers PSNR on ficus and mic.
 - Opacity reset on scenes other than lego, and a full start combined with reset.
 - Whether any of this holds with a point-cloud init, on real scenes, or above 400 px.

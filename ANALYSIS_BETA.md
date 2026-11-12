@@ -198,7 +198,20 @@ Lego val, seed 0:
   The 0.2 dB range is within seed noise, so the choice of 0.0005 is weakly supported.
 - The paper uses 0.001.
 - At 0.0005, clamp mass at b = +2 is highest on hotdog (5.5% and 4.2%) and lego (2.8–4.2%), and
-  at most 1.9% elsewhere. The clamp may cap hotdog's gain; not tested.
+  at most 1.9% elsewhere.
+- **The clamp does not cap the gain.** The paper leaves b unbounded; the [−2, 2] clamp is an
+  addition here, made with the first implementation and not tuned. Side check
+  (`runs_clamp4/`, seed 0, clamp widened to [−4, 4], everything else as the protocol):
+
+  | Scene | B, clamp ±2 | B, clamp ±4 | Difference | Largest b | Splats above +2 |
+  |---|---|---|---|---|---|
+  | lego | 27.71 | 27.70 | −0.01 dB | +3.43 | 4.7% |
+  | hotdog | 33.47 | 33.50 | +0.03 dB | +3.66 | 5.7% |
+
+  Both differences are below the 0.12 dB spread of same-seed repeats. The few percent of
+  splats that sat at +2 move on to between +2 and about +3.5, nothing reaches ±4, the rest of
+  the b distribution is unchanged (median −0.15 and −0.13 in both settings), and PSNR does not
+  move. One seed, two scenes.
 
 ## 8. Low-budget warm start is not a kernel effect
 

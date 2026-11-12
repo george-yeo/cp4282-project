@@ -56,7 +56,9 @@ give the splat's alpha as
 
 where o is the opacity. The Beta kernel ends exactly at 3σ. At b = 0 the exponent is 4 and the
 profile is close to the Gaussian. A positive b gives a sharper peak; a negative b gives a
-flatter top with a steeper edge, approaching a box. b is clamped to [−2, 2].
+flatter top with a steeper edge, approaching a box. b is clamped to [−2, 2]. The paper leaves b unbounded; the clamp is a
+safeguard I added, and widening it to [−4, 4] changes PSNR by at most 0.03 dB on lego and
+hotdog (one seed), so it does not affect the results.
 
 ### 2.2 Implementation
 
