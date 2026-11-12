@@ -484,15 +484,20 @@ def fig_lead_by_scene(args, protocol_only=False):
 # ---------------------------------------------------------------- figure 2
 
 def fig_ablation(args):
-    scenes = ["lego", "ficus", "hotdog", "chair"]
+    # Every scene that has a frozen-b run at seed 0.
+    scenes = [sc for sc in SCENES if leads(args.runs, sc, [0], arm="B0")]
     series = [("Kernel shape only (b frozen at 0)", "B0", ORANGE, +0.19),
               ("Learnable b", "B", BLUE, -0.19)]
     val = {(arm, sc): leads(args.runs, sc, [0], arm=arm)[0] for _, arm, *_ in series
            for sc in scenes}
     order = sorted(scenes, key=lambda sc: val[("B", sc)])
+    for _, arm, *_ in series:
+        print(f"fig2 {arm} - A over {len(scenes)} scenes, seed 0: mean "
+              f"{np.mean([val[(arm, sc)] for sc in scenes]):+.3f} dB")
 
-    fig, ax = plt.subplots(figsize=(6.5, 3.1))
-    fig.subplots_adjust(left=0.13, right=0.97, top=0.78, bottom=0.16)
+    height = 1.18 + 0.48 * len(scenes)  # 0.68 in above the axes, 0.50 in below
+    fig, ax = plt.subplots(figsize=(6.5, height))
+    fig.subplots_adjust(left=0.13, right=0.97, top=1 - 0.68 / height, bottom=0.50 / height)
     clean_axes(ax, "x")
     ax.set_xlim(-0.6, 1.0)
     ax.set_ylim(-0.6, len(order) - 0.4)
@@ -517,9 +522,11 @@ def fig_ablation(args):
 
     handles = [Rectangle((0, 0), 1, 1, facecolor=c, edgecolor="none", label=l)
                for l, _, c, _ in series]
-    fig.legend(handles=handles, loc="upper left", bbox_to_anchor=(0.115, 0.89), ncols=2,
-               fontsize=8, handlelength=1.0, handleheight=0.8, columnspacing=1.6, borderpad=0)
-    title(fig, 0.125, 0.93, "Most of the gain comes from learning b, not from the kernel shape")
+    fig.legend(handles=handles, loc="upper left", bbox_to_anchor=(0.115, 1 - 0.34 / height),
+               ncols=2, fontsize=8, handlelength=1.0, handleheight=0.8, columnspacing=1.6,
+               borderpad=0)
+    title(fig, 0.125, 1 - 0.22 / height,
+          "Most of the gain comes from learning b, not from the kernel shape")
     save(fig, args.out, "fig2_ablation", rows, ["series", "arm", "scene", "difference_from_A_db"])
 
 
