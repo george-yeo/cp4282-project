@@ -495,9 +495,13 @@ def fig_ablation(args):
         print(f"fig2 {arm} - A over {len(scenes)} scenes, seed 0: mean "
               f"{np.mean([val[(arm, sc)] for sc in scenes]):+.3f} dB")
 
-    height = 1.18 + 0.48 * len(scenes)  # 0.68 in above the axes, 0.50 in below
-    fig, ax = plt.subplots(figsize=(6.5, height))
-    fig.subplots_adjust(left=0.13, right=0.97, top=1 - 0.68 / height, bottom=0.50 / height)
+    # 0.68 in above the axes, 0.50 in below. On a slide the figure is narrower and its rows
+    # closer, so the same type reads larger once the image is fitted to the slide.
+    width, row = (5.6, 0.36) if SLIDES else (6.5, 0.48)
+    height = 1.18 + row * len(scenes)
+    fig, ax = plt.subplots(figsize=(width, height))
+    fig.subplots_adjust(left=0.13 * 6.5 / width, right=0.97, top=1 - 0.68 / height,
+                        bottom=0.50 / height)
     clean_axes(ax, "x")
     ax.set_xlim(-0.6, 1.0)
     ax.set_ylim(-0.6, len(order) - 0.4)
@@ -517,12 +521,15 @@ def fig_ablation(args):
     ax.set_yticklabels(order, color=INK)
     db_ticks(ax)
     ax.set_xlabel("Difference from the Gaussian, test PSNR (dB), seed 0")
-    ax.text(band + 0.015, -0.55, f"grey band: ±{band:.2f} dB, the spread of one seed pair on lego",
-            fontsize=7.5, color=INK_2, va="bottom")
+    if not SLIDES:  # the slide explains the band in its own text
+        ax.text(band + 0.015, -0.55,
+                f"grey band: ±{band:.2f} dB, the spread of one seed pair on lego",
+                fontsize=7.5, color=INK_2, va="bottom")
 
     handles = [Rectangle((0, 0), 1, 1, facecolor=c, edgecolor="none", label=l)
                for l, _, c, _ in series]
-    fig.legend(handles=handles, loc="upper left", bbox_to_anchor=(0.115, 1 - 0.34 / height),
+    fig.legend(handles=handles, loc="upper left",
+               bbox_to_anchor=(0.115 * 6.5 / width, 1 - 0.34 / height),
                ncols=2, fontsize=8, handlelength=1.0, handleheight=0.8, columnspacing=1.6,
                borderpad=0)
     title(fig, 0.125, 1 - 0.22 / height,
