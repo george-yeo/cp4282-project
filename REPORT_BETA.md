@@ -323,20 +323,64 @@ ablation, which shows the shape alone does nothing, and the statistics of the le
 
 ## 6. Limitations
 
-- Two seeds per scene (four on lego); one seed for the ablation (a second seed on three
-  scenes only), the densifier, the low-budget points and the view-count sweep.
-- From the 1,000-splat start Beta leaves more seed-dependent bad views than the Gaussian (218
-  against 149 of 1,600). I did not find out why.
-- Eight synthetic scenes, random initialisation, no real captures. Counting scenes as the unit,
-  the mean lead is about twice its standard error.
-- One capacity for the main table. The budget trend rests on lego and ficus.
-- Which scenes gain depends on the starting splat count. Only ficus and lego lead in both
-  settings.
-- The seed-variance experiments (same-seed repeats, opacity reset, iterations, resolution) are
-  on lego only.
-- b's learning rate was tuned on one scene, and the three values tried differ by less than the
-  seed noise.
-- The link between b and the gain is a consistent pattern across runs, not a controlled test.
+**Few seeds.** The main comparison has two seeds per scene and four on lego. With two seeds, a
+per-scene difference below about 0.3 dB cannot be told from noise: chair's two seeds disagree
+by 0.54 dB. So the per-scene numbers in Table 1 are indications, and only the 18-pair mean is
+well supported. Four results rest on a single seed: the frozen-b ablation (a second seed exists
+on three scenes only), the densifier arm, the 2,500 and 5,000-splat points, and the view-count
+sweep. Any single bar or point in those can be a lucky or unlucky run, as chair in Figure 2 is.
+
+**Beta leaves more floaters, and I do not know why.** Counting test views where a scene's two
+seeds differ by more than 1 dB, Beta has 218 of 1,600 and the Gaussian 149 under the protocol
+(167 and 137 from a full start). So part of what Table 1 measures is not how well each kernel
+fits a scene but how often each arm leaves a stray splat, and that part depends on the training
+setup. I tested no mechanism for the difference.
+
+**Few scenes, and all of one kind.** Eight synthetic objects on a white background, at 400 px,
+from a random start, with one fixed colour per splat. There are no real captures and no
+point-cloud initialisation. Counting each scene once, the mean lead is +0.20 dB with a standard
+error of 0.11, about twice its standard error: enough to say Beta leads on these scenes, not
+enough to predict a new one.
+
+**One budget, far below practice.** The main table is at 10,000 splats; published models use
+hundreds of thousands. The trend with budget comes from two scenes, with one seed at 2,500 and
+5,000 splats, and at 30,000 the two seeds disagree widely (+1.11 and +0.52 dB on lego, +1.24
+and +0.25 dB on ficus). Whether the lead holds at realistic budgets is open.
+
+**Which scenes gain is not stable.** Between the protocol and the full start the rank
+correlation of the per-scene lead is 0.40, which is not distinguishable from none over eight
+scenes. Hotdog goes from +0.53 to +0.05 dB and ship from −0.10 to +0.24 dB. Only ficus and
+lego lead in both settings, so "Beta suits scenes like X" is established for those two alone.
+
+**The noise study is lego only.** The 0.30 dB seed spread, the 0.16 dB spread of a paired
+difference, the 0.95 correlation between neighbouring views, the same-seed repeats and the
+effect of opacity reset were all measured on lego and then applied to every scene. That is an
+assumption. A full start, the one remedy I did test everywhere, lowered PSNR on ficus and mic.
+
+**b's learning rate is weakly chosen.** It was picked on lego's validation split at one seed,
+from three values that gave 28.58, 28.37 and 28.43 dB. That 0.2 dB range is inside the seed
+noise, so the rule picked 0.0005 but the data do not really prefer it; the paper uses 0.001.
+
+**The mechanism is inferred, not tested.** Two claims need separating.
+
+- *That learning b causes the gain* is supported by an intervention: freezing b removes it
+  (section 4.2), though at one seed per scene.
+- *That the gain arises because sharp splats draw edges and flat splats cover surfaces* is
+  only a pattern. The evidence is that b is sharp at edges and flat on surfaces in the b-maps,
+  that b is negatively correlated with splat size in all eight scenes, and that the error near
+  the silhouette falls in seven of them. Each of these is a correlation observed after
+  training. I never set b myself to see what follows.
+
+Three observations do not fit the simple story. On ship and chair b spreads away from 0 and
+PSNR does not improve. From a full start b spreads about half as far and the gain is
+unchanged, so the amount b moves does not track the size of the gain. And hotdog's gain under
+the protocol was inside the object, not at its outline.
+
+So an explanation I cannot rule out is that a learnable b helps simply as one more free
+parameter per splat, by letting the optimiser adjust each footprint in a way scale and opacity
+cannot, with the edge pattern as a by-product. Tests that would separate the two: reset b to 0
+on edge splats only, or on interior splats only, in a trained model and see where the error
+returns; train with b allowed to go only sharp or only flat; or learn b for small splats only.
 
 ## 7. What I would do differently with more time
 
