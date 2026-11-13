@@ -1,6 +1,6 @@
 # CP4282 Beta-kernel study: code notes
 
-Built on George's AS2 submission (`george-yeo/cp4282-as2`, branch `main`, on top of the course starter `weitsang/cp4282-as2` @ 9e74d1e). Branch `beta` adds one commit per change; `git log main..beta` lists them.
+Built on George's AS2 submission, on top of the course starter `weitsang/cp4282-as2` @ 9e74d1e. Each change is one commit. The top-level `README.md` has the reproduction steps; this file is the detail.
 
 ## What changed
 
@@ -45,7 +45,9 @@ After the first trained A model exists, re-run G2 on it:
 
 ## Running
 
-Data: the eight NeRF-synthetic scenes in one folder (`<root>/{chair,drums,...}/transforms_*.json`). The checks read `data/lego` (copy `data/` from your AS2 clone).
+Data: the eight NeRF-synthetic scenes in one folder (`<root>/{chair,drums,...}/transforms_*.json`). The checks read `data/lego`, which is in the repository.
+
+`bash scripts/reproduce.sh <root>` runs everything below, plus the frozen-b runs on all eight scenes and every side check, with the frozen protocol choices. The queues it calls are:
 
 ```bash
 python beta_runs.py pilot --data-root ~/data/nerf_synthetic  # 6 lego runs (val): capacity x loss
@@ -54,11 +56,13 @@ python beta_runs.py q1 --data-root ~/data/nerf_synthetic     # 3 b-lr runs (val)
 python beta_runs.py pick-lr                                  # merges b_lr into runs/chosen.json
 python beta_runs.py sigma                                    # writes runs/sigma.json
 python beta_runs.py q2 --data-root ~/data/nerf_synthetic     # 32 core runs
-python beta_runs.py q3 --data-root ~/data/nerf_synthetic     # B0 x4, budget, B@90%, warm start, C x2
+python beta_runs.py q3 --data-root ~/data/nerf_synthetic     # B0 x4 (--b0-scenes for all 8), budget, B@90%, warm start, C x2
 python beta_runs.py q4 --data-root ~/data/nerf_synthetic     # optional view-count sweep
 python beta_runs.py status ; python beta_runs.py summary
 ```
 
 Add `--no-lpips` if torch/lpips aren't installed. Run `python beta_runs.py q1 --dry-run` to list runs without starting them. Queues are resumable: a run with `DONE` is skipped, and an unfinished run directory is wiped and restarted.
+
+Side checks change one setting and write to their own folder, for example `python beta_runs.py one --arm B --scene lego --seed 0 --runs runs_init10k --initial-splats 10000`. The flags are `--initial-splats`, `--capacity`, `--opacity-reset-interval`, `--iterations`, `--resolution` and `--b-clamp`; a new `--runs` folder needs a copy of `runs/chosen.json` (the frozen budget, loss and b learning rate). `scripts/reproduce.sh` lists the exact command for every folder.
 
 Each run directory contains: `config.yaml`, `train.log`, `final.ply` (+ `final.beta.npz`), `final.runlog.json` (eval series, densify events with parent/active b histograms, b summary incl. % at the clamps, ms/iter, peak mempool), `{test,val}_metrics.csv`, `{test,val}_renders/*.png` and `DONE`.
