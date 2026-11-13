@@ -745,6 +745,9 @@ def fig_seed_spread(args):
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--root", default="",
+                    help="Folder holding the run folders, e.g. 'results' to draw the figures from "
+                         "the committed result files instead of local runs.")
     ap.add_argument("--runs", default="runs", help="Protocol runs.")
     ap.add_argument("--runs-full", default="runs_init10k", help="Runs from 10,000 starting splats.")
     ap.add_argument("--runs-30k", default="runs_30k", help="Runs with a 30,000-splat budget.")
@@ -759,6 +762,9 @@ def main():
     ap.add_argument("--data-root", default=None,
                     help="NeRF-synthetic folder; only needed for the slide images that show renders.")
     args = ap.parse_args()
+    if args.root:
+        for name in ("runs", "runs_full", "runs_30k", "runs_reset", "runs_40k", "rep_prefix"):
+            setattr(args, name, os.path.join(args.root, getattr(args, name)))
     global SLIDES
     SLIDES = args.for_slides
     if args.out is None:
