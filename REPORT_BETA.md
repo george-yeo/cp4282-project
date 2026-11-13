@@ -403,8 +403,8 @@ exactly.
 **What I used it for.**
 
 - Implementing the Beta kernel, its gradients, the frozen-b and densifier arms and the run
-  driver on top of the course trainer. Every commit in the project branch that is not from the
-  course starter was made with it and carries a co-author line.
+  driver on top of the course trainer. Every commit after my assignment 2 submission was made
+  with it and carries a co-author line.
 - Running the training queues and side checks, and collecting their results.
 - Analysing the results: the per-view and per-region breakdowns, the seed-variance study and
   the figures.
