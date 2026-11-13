@@ -48,31 +48,45 @@ This project isolates the kernel. The questions are:
 
 ### 2.1 The kernel
 
-For a pixel at squared Mahalanobis distance q from a splat's projected centre, the two kernels
-give the splat's alpha as
+In the course's notation [6], a splat's alpha at pixel p is α(p) = α₀ · w(p), where α₀ is the
+splat's opacity and w is the kernel weight. Write q = (p − μ)ᵀ Σ⁻¹ (p − μ) for the squared
+distance from the splat's projected centre, measured with its projected covariance. The two
+kernels differ only in w:
 
-- Gaussian: α = o · exp(−q / 2)
-- Beta: α = o · (1 − q / 9)^(4·e^b) for q < 9, and 0 beyond
+- Gaussian: w = exp(−q / 2)
+- Beta: w = (1 − q / 9)^(4·e^b) for q < 9, and 0 beyond
 
-where o is the opacity. The Beta kernel ends exactly at 3σ. At b = 0 the exponent is 4 and the
-profile is close to the Gaussian. A positive b gives a sharper peak; a negative b gives a
-flatter top with a steeper edge, approaching a box. b is clamped to [−2, 2]. The paper leaves b unbounded; the clamp is a
-safeguard I added, and widening it to [−4, 4] changes PSNR by at most 0.03 dB on lego and
-hotdog (one seed), so it does not affect the results.
+The 9 is 3σ squared, so the Beta kernel ends exactly at 3σ, and b is one extra learnable number
+per splat. At b = 0 the exponent is 4 and the profile is close to the Gaussian. A positive b
+gives a sharper peak; a negative b gives a flatter top with a steeper edge, approaching a box.
+
+![Kernel profiles](figures/report/fig0_kernel_profiles.png)
+
+*Figure 1. The Gaussian and the Beta kernel at three values of b, against distance from the
+splat centre.*
+
+b is clamped to [−2, 2]. The paper leaves b unbounded; the clamp is a safeguard I added, and
+widening it to [−4, 4] changes PSNR by at most 0.03 dB on lego and hotdog (one seed), so it
+does not affect the results.
 
 ### 2.2 Implementation
 
 The kernel is implemented in the course trainer's forward and backward passes
-(`3dgs_trainer.py`), including the analytic gradient with respect to b. The main points:
+(`3dgs_trainer.py`), including the analytic gradient with respect to b. The paper gives the
+kernel but not its gradients, so I derived them: ∂w/∂q = −(β/9)(1 − q/9)^(β−1) and
+∂w/∂b = w · β · ln(1 − q/9), with β = 4·e^b. The main points:
 
 - **b has its own Adam optimiser** and learning rate, and is projected back into the clamp after
   each step. Children created by densification inherit their parent's b.
 - **Both kernels are truncated at the same alpha.** The course's Compact Box rule cuts a
-  Gaussian where its alpha falls to √(o·α_min); the Beta kernel uses the same threshold, and the
-  tile assignment uses the same per-splat support as shading.
+  Gaussian where its alpha falls to √(α₀·α_min); the Beta kernel uses the same threshold, and
+  the tile assignment uses the same per-splat support as shading. So neither kernel is drawn
+  out to 3σ in this trainer: an opaque Gaussian is cut at 2.35σ and an opaque Beta splat with
+  b = 0 at 2.12σ. The Beta kernel's bounded support therefore gives it no larger or smaller
+  footprint for free.
 - **Moment-matched initialisation.** A Beta splat at b = 0 is slightly narrower than a Gaussian
   with the same covariance. The initial scales are multiplied by a factor that matches the
-  second moment of the truncated footprint at each splat's opacity (1.09 at o = 1). With it, a
+  second moment of the truncated footprint at each splat's opacity (1.09 at α₀ = 1). With it, a
   Gaussian model re-rendered as Beta agrees with the original to 44–46 dB, against 40 dB without
   scaling.
 - **The Gaussian arm is unchanged.** Its gradients are bit-identical before and after the Beta
@@ -97,8 +111,11 @@ No training run was counted until these passed:
 | B | Beta | learnable per splat | The method under test |
 | C | Beta | learnable | B plus a densifier that accounts for b when splitting |
 
-Arms differ in one thing at a time: A → B0 changes the shape, B0 → B makes b learnable, B → C
-changes the densifier.
+A, B0 and B share the same densifier and differ in one thing at a time: A → B0 changes the
+shape, B0 → B makes b learnable. Arm C is a side check, not part of the comparison. The course
+densifier ranks splats by gradient and decides between cloning and splitting by scale, both of
+which assume a Gaussian; arm C corrects both for b, to test whether the shared densifier holds
+Beta back.
 
 ## 3. Protocol
 
@@ -153,7 +170,7 @@ That is the small budget, the low resolution and the random start, and it applie
 
 ![Ablation](figures/report/fig2_ablation.png)
 
-*Figure 1. Frozen-b Beta (B0) and learnable-b Beta (B) against the Gaussian, seed 0.*
+*Figure 2. Frozen-b Beta (B0) and learnable-b Beta (B) against the Gaussian, seed 0.*
 
 Freezing b at 0 gives −0.03 dB on average over the eight scenes (standard error 0.06), which
 is inside the noise; it is ahead of the Gaussian on only two scenes. Unfreezing it adds
@@ -161,14 +178,22 @@ is inside the noise; it is ahead of the Gaussian on only two scenes. Unfreezing 
 +0.42 dB on hotdog. On lego the frozen kernel already gains +0.28 dB, so the split there is
 unclear with one seed. On chair and ship both variants lose.
 
+Those losses belong to the runs, not to the kernel. A second frozen-b seed on the three scenes
+where it lost gives B0 − A of −0.02 dB on mic, +0.05 dB on ship and +0.04 dB on chair (seed 0:
+−0.25, −0.18 and −0.17 dB). At seed 0 the views where a Beta arm is more than 0.5 dB behind
+come in runs of neighbouring test cameras (ship views 88–111, chair views 0–20 and 178–199),
+and the renders show stray splats there: under ship's basin and in front of the chair's seat.
+Outside those views the difference is +0.12 dB on ship and +0.02 dB on chair.
+
 The kernel-aware densifier (arm C) changes nothing: 27.75 against 27.71 dB on lego and 27.47
-against 27.50 dB on ficus. DBS likewise uses a densifier that ignores the kernel's shape.
+against 27.50 dB on ficus (one seed each). So the shared densifier does not hold Beta back.
+DBS likewise uses a densifier that ignores the kernel's shape.
 
 ### 4.3 More splats do not shrink the lead
 
 ![Budget](figures/report/fig3_lead_vs_budget.png)
 
-*Figure 2. Top: Beta's lead against the splat budget. Bottom: the mean learned b.*
+*Figure 3. Top: Beta's lead against the splat budget. Bottom: the mean learned b.*
 
 I expected Beta to help most when splats are scarce, because one flexible splat could stand in
 for several Gaussians. The opposite holds. The lead is smallest at 2,500 splats and larger at
@@ -184,7 +209,7 @@ used more when there are enough splats to specialise.
 
 ![b-map](figures/b_map_B_lego_s0.png)
 
-*Figure 3. Lego, two test views: ground truth, Beta render, and a map of the mean b seen at
+*Figure 4. Lego, two test views: ground truth, Beta render, and a map of the mean b seen at
 each pixel (blue = flat, grey = 0, red = sharp).*
 
 - Broad surfaces (the baseplate, body panels) are covered by flat splats. Rims, thin rods and
@@ -225,7 +250,7 @@ where it comes from.
 
 ![Seed spread](figures/report/fig4_seed_spread_lego.png)
 
-*Figure 4. Every lego run under five training settings.*
+*Figure 5. Every lego run under five training settings.*
 
 Two changes remove most of the spread on lego (side checks):
 
@@ -252,7 +277,7 @@ not leave floaters.
 
 ![Lead by scene](figures/report/fig1_lead_by_scene.png)
 
-*Figure 5. Beta's lead per scene under the protocol (blue) and from 10,000 starting splats
+*Figure 6. Beta's lead per scene under the protocol (blue) and from 10,000 starting splats
 (green).*
 
 Because the 1,000-splat start is a source of noise, I repeated the whole comparison from 10,000
@@ -272,7 +297,9 @@ starting splats (a side check, same seeds).
 - Silhouette error again falls in seven scenes and is flat in the eighth.
 
 A full start is not better everywhere: both arms lose about 0.7 dB on ficus and 0.4 dB on mic.
-It is a robustness check, not a better protocol.
+It also does not remove every floater. On chair's worse seed the views where Beta is more than
+0.5 dB behind fall from 78 to 14 of 200, not to zero, and hotdog and chair still show runs of
+bad views in both arms. It is a robustness check, not a better protocol.
 
 ### 4.7 Fewer training views
 
@@ -296,8 +323,10 @@ ablation, which shows the shape alone does nothing, and the statistics of the le
 
 ## 6. Limitations
 
-- Two seeds per scene (four on lego); one seed for the ablation, the densifier, the low-budget
-  points and the view-count sweep.
+- Two seeds per scene (four on lego); one seed for the ablation (a second seed on three
+  scenes only), the densifier, the low-budget points and the view-count sweep.
+- From the 1,000-splat start Beta leaves more seed-dependent bad views than the Gaussian (218
+  against 149 of 1,600). I did not find out why.
 - Eight synthetic scenes, random initialisation, no real captures. Counting scenes as the unit,
   the mean lead is about twice its standard error.
 - One capacity for the main table. The budget trend rests on lego and ficus.
@@ -309,7 +338,25 @@ ablation, which shows the shape alone does nothing, and the statistics of the le
   seed noise.
 - The link between b and the gain is a consistent pattern across runs, not a controlled test.
 
-## 7. Conclusion
+## 7. What I would do differently with more time
+
+- **Choose a quieter protocol.** I froze a 1,000-splat start with opacity reset off before I
+  knew they were the main source of seed noise. I would test opacity reset on all eight scenes
+  first and, if it holds up as it did on lego, make it part of the protocol.
+- **More seeds where the claims are thinnest.** The frozen-b ablation is one seed per scene.
+  It is the result that is new relative to the paper, so it deserves at least the two seeds the
+  main comparison has, and four on a second scene besides lego.
+- **Test the mechanism, not only the outcome.** That floaters grow from a sparse start, and
+  that b helps at boundaries, are both patterns consistent with the runs. I would trace
+  floaters back to the densification step that created them, and intervene on b directly (for
+  example freeze b for large splats only) to see whether the boundary gain follows.
+- **Explain the two open cases.** Why hotdog's lead depends on the start, and why Beta leaves
+  more floaters than the Gaussian from a sparse start.
+- **Leave the synthetic, fixed-colour setting.** A point-cloud initialisation, view-dependent
+  colour, a larger budget and real captures would show whether a 0.2 dB kernel gain survives
+  once the other limits on quality are lifted.
+
+## 8. Conclusion
 
 In this trainer, at a small splat budget, the Beta kernel with a learnable per-splat shape is a
 small, real improvement over the Gaussian: about 0.2 dB on average, at almost no cost. On lego
@@ -324,6 +371,63 @@ effect of this size. Pairing by seed, looking at per-view errors and renders ins
 and re-testing the conclusion under a changed setup were what separated the kernel's effect
 from the floaters.
 
+## 9. Code and reproduction
+
+Repository: **[REPOSITORY LINK TO BE ADDED]**
+
+- **Environment:** Python with the packages in `requirements.txt` (Warp 1.16, NumPy, Pillow,
+  PyYAML, plyfile; torch and lpips for LPIPS). All runs were on one RTX 5070 under Windows.
+- **Data:** the eight NeRF-synthetic scenes in one folder, passed as `--data-root`.
+- **Checks:** `python checks/check_beta_gradients.py`, `python checks/check_sparse_matches_dense.py`
+  and `python checks/check_arm_equivalences.py`. Their output is in `README_BETA.md`.
+- **Protocol runs:** `python beta_runs.py pilot`, `pick-pilot`, `q1`, `pick-lr`, `q2`, `q3` and
+  `q4` in that order, each with `--data-root`. The queues are resumable and write one folder per
+  run under `runs/`. `python beta_runs.py summary` writes the table of results.
+- **Side checks** use the same driver with one setting changed and their own run folder, for
+  example `python beta_runs.py one --arm B --scene lego --seed 0 --runs runs_init10k
+  --initial-splats 10000 --data-root <folder>`. The other flags are `--opacity-reset-interval`,
+  `--iterations`, `--resolution`, `--capacity` and `--b-clamp`.
+- **Figures:** `python scripts/report_figures.py` (needs matplotlib) reads the run folders and
+  writes `figures/report/` with a CSV of every plotted value.
+
+`README_BETA.md` has the full list of code changes and commands. Run-to-run results on a GPU
+are not bit-reproducible (section 4.5), so a rerun should match these numbers to within about
+0.1 dB per run, not exactly.
+
+## 10. AI use declaration
+
+**Tool.** Claude Code (Anthropic), a coding agent, across the whole project.
+
+**What I used it for.**
+
+- Implementing the Beta kernel, its gradients, the frozen-b and densifier arms and the run
+  driver on top of the course trainer. Every commit in the project branch that is not from the
+  course starter was made with it and carries a co-author line (55 commits).
+- Running the training queues and side checks, and collecting their results.
+- Analysing the results: the per-view and per-region breakdowns, the seed-variance study and
+  the figures.
+- Drafting this report, the analysis and investigation notes, and the presentation slides.
+
+**What was mine.** The research question and its scope (change the kernel and nothing else),
+the rules the work had to follow (leave the course kernels and checks unmodified, choose
+settings on validation and never on test, freeze the protocol before the main runs, keep
+off-protocol runs separate and labelled), the decisions on which follow-up experiments to run,
+and the review of the results and of the explanations offered for them.
+
+**How I checked its output.**
+
+- **Code:** finite-difference gradient checks for the new kernel, a check that the sampled and
+  dense loss paths agree, and a check that the Gaussian arm's gradients are bit-identical
+  before and after the change (sections 2.2 and 2.3). No run was counted before these passed.
+- **Numbers:** every figure and table is generated by a script from the run folders, with a CSV
+  of the plotted values, so each number can be traced to its runs.
+- **Claims:** predictions were written down before each batch of runs, and
+  `INVESTIGATION_BETA.md` lists the claims that later runs overturned (for example that hotdog
+  was a scene that suits Beta, and that opacity reset would cost quality).
+- **The paper's numbers** were re-read from the arXiv page before being quoted.
+- **Renders** were inspected directly wherever a mean looked surprising, which is how the
+  floaters were found.
+
 ## References
 
 1. B. Kerbl, G. Kopanas, T. Leimkühler, G. Drettakis. 3D Gaussian Splatting for Real-Time
@@ -335,6 +439,8 @@ from the floaters.
    ECCV 2020.
 5. R. Zhang et al. The Unreasonable Effectiveness of Deep Features as a Perceptual Metric.
    CVPR 2018.
+6. CP4282 course notes and assignment 2 trainer (the Warp 3DGS trainer this project builds on,
+   including its Compact Box rule). https://weitsang.github.io/gaussian-splatting-notes/
 
 ## Appendix: where the details are
 
