@@ -4,8 +4,8 @@ George Yeo · CP4282 individual project · 13 November 2026
 
 ## Summary
 
-This project's main focus is challenge the assumption that we have to use a Gaussian kernel, and to evaluate the difference in outcomes when we use a Beta kernel instead.
-Leveraging the courses' Warp 3DGS trainer, modified it to also support Beta kernels from Deformable Beta splatting.
+This project's main focus is to challenge the assumption that we have to use a Gaussian kernel, and to evaluate the difference in outcomes when we use a Beta kernel instead.
+Leveraging the course's Warp 3DGS trainer, I modified it to also support Beta kernels from Deformable Beta Splatting.
 Each Beta kernel splat learns 1 extra shape parameter b, an increase in memory footprint by 1 float.
 For this project, I compared the 2 kernels under a fixed protocol on the 8 NeRF-synthetic scenes (10,000 splats,
 400 px, 20,000 iterations).
