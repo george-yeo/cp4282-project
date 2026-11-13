@@ -373,7 +373,7 @@ from the floaters.
 
 ## 9. Code and reproduction
 
-Repository: **[REPOSITORY LINK TO BE ADDED]**
+Repository: https://github.com/george-yeo/cp4282-project
 
 The repository's `README.md` has the steps. In short:
 
