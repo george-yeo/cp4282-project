@@ -10,6 +10,7 @@ Deformable Beta Splatting, changes nothing else, and measures what the kernel al
 | File | What it is |
 |---|---|
 | [REPORT_BETA.md](REPORT_BETA.md) | The report |
+| [REPORT_BETA.pdf](REPORT_BETA.pdf) | The same report as a PDF, built by `scripts/report_pdf.py` |
 | [ANALYSIS_BETA.md](ANALYSIS_BETA.md) | Every result with its table |
 | [INVESTIGATION_BETA.md](INVESTIGATION_BETA.md) | The order the findings were reached in, the predictions made before each batch of runs, and the claims that were corrected |
 | [README_BETA.md](README_BETA.md) | Code changes, design decisions and the correctness checks |
