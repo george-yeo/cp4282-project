@@ -375,24 +375,26 @@ from the floaters.
 
 Repository: **[REPOSITORY LINK TO BE ADDED]**
 
-- **Environment:** Python with the packages in `requirements.txt` (Warp 1.16, NumPy, Pillow,
-  PyYAML, plyfile; torch and lpips for LPIPS). All runs were on one RTX 5070 under Windows.
-- **Data:** the eight NeRF-synthetic scenes in one folder, passed as `--data-root`.
-- **Checks:** `python checks/check_beta_gradients.py`, `python checks/check_sparse_matches_dense.py`
-  and `python checks/check_arm_equivalences.py`. Their output is in `README_BETA.md`.
-- **Protocol runs:** `python beta_runs.py pilot`, `pick-pilot`, `q1`, `pick-lr`, `q2`, `q3` and
-  `q4` in that order, each with `--data-root`. The queues are resumable and write one folder per
-  run under `runs/`. `python beta_runs.py summary` writes the table of results.
-- **Side checks** use the same driver with one setting changed and their own run folder, for
-  example `python beta_runs.py one --arm B --scene lego --seed 0 --runs runs_init10k
-  --initial-splats 10000 --data-root <folder>`. The other flags are `--opacity-reset-interval`,
-  `--iterations`, `--resolution`, `--capacity` and `--b-clamp`.
-- **Figures:** `python scripts/report_figures.py` (needs matplotlib) reads the run folders and
-  writes `figures/report/` with a CSV of every plotted value.
+The repository's `README.md` has the steps. In short:
 
-`README_BETA.md` has the full list of code changes and commands. Run-to-run results on a GPU
-are not bit-reproducible (section 4.5), so a rerun should match these numbers to within about
-0.1 dB per run, not exactly.
+- **Without a GPU.** `results/` holds the result files of all 154 runs: settings, summary
+  metrics, per-view test metrics, training logs and the learned b of every splat.
+  `python scripts/report_figures.py --root results` redraws the figures from them, each with a
+  CSV of its plotted values, so every number here can be traced to its runs.
+- **Environment:** Python with the packages in `requirements.txt` (Warp 1.16, NumPy, Pillow,
+  PyYAML, plyfile; torch and lpips for LPIPS). All runs were on one RTX 5070.
+- **Data:** the eight NeRF-synthetic scenes [4] in one folder.
+- **Checks:** `checks/check_beta_gradients.py`, `checks/check_sparse_matches_dense.py` and
+  `checks/check_arm_equivalences.py`, plus the course's `3dgs_gradient_check_gpu.py`.
+- **All runs:** `bash scripts/reproduce.sh <data folder>` trains and evaluates every run in the
+  order it was made: the protocol runs and each side check in its own folder. It is about
+  6.5 hours of training plus evaluation, it is resumable, and the script itself is the list of
+  exact commands. By default it uses the frozen protocol choices; `--repick` reruns the rules
+  that chose them.
+
+Training on a GPU is not bit-reproducible (section 4.5): the same seed run four times varied by
+0.12 dB. A rerun should match these numbers to within a few tenths of a dB per run, not
+exactly.
 
 ## 10. AI use declaration
 
