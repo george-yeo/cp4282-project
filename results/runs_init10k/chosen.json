@@ -1,0 +1,119 @@
+{
+ "capacity": 10000,
+ "loss": "dense",
+ "pilot_rule": "Budget = smallest of [10000, 30000, 100000] whose arm-A sparse-loss lego val PSNR is at least (100k PSNR - 0.5 dB). Loss = dense if the projected GPU time (train + eval) of q1+q2+q3 at that budget is <= 12 h, else sparse. Projection: per-run pilot train time plus eval time per view x views in the run's split; A runs timed by pilot A, B/B0/C by pilot B; dense and B timings come from 30000 and are used unscaled at or below 30000 and scaled by capacity/30000 above it; q3 budget-fraction runs are charged full-capacity time.",
+ "pilot_table": [
+  {
+   "name": "pilot_A_lego_c10000_sparse",
+   "arm": "A",
+   "capacity": 10000,
+   "loss": "sparse",
+   "psnr_db": 27.190523774781116,
+   "ssim": 0.9110896021127701,
+   "lpips": 0.08511165868490934,
+   "final_active": 10000,
+   "ms_per_iteration": 5.805982809999842,
+   "train_seconds": 118.73985052108765,
+   "eval_seconds": 11.224803686141968,
+   "eval_views": 100,
+   "peak_mempool_bytes": 221263703
+  },
+  {
+   "name": "pilot_A_lego_c30000_sparse",
+   "arm": "A",
+   "capacity": 30000,
+   "loss": "sparse",
+   "psnr_db": 27.844645194047065,
+   "ssim": 0.9288472574949265,
+   "lpips": 0.053931600656360386,
+   "final_active": 30000,
+   "ms_per_iteration": 10.18466810999962,
+   "train_seconds": 206.34194803237915,
+   "eval_seconds": 11.278647899627686,
+   "eval_views": 100,
+   "peak_mempool_bytes": 238469847
+  },
+  {
+   "name": "pilot_A_lego_c100000_sparse",
+   "arm": "A",
+   "capacity": 100000,
+   "loss": "sparse",
+   "psnr_db": 27.254260458758644,
+   "ssim": 0.9310120123624802,
+   "lpips": 0.048999488055706024,
+   "final_active": 100000,
+   "ms_per_iteration": 12.922382784998627,
+   "train_seconds": 261.0685510635376,
+   "eval_seconds": 11.763490915298462,
+   "eval_views": 100,
+   "peak_mempool_bytes": 298690327
+  },
+  {
+   "name": "pilot_A_lego_c30000_dense",
+   "arm": "A",
+   "capacity": 30000,
+   "loss": "dense",
+   "psnr_db": 28.907227915054087,
+   "ssim": 0.9404789215326309,
+   "lpips": 0.04279891986399889,
+   "final_active": 30000,
+   "ms_per_iteration": 12.305981399997837,
+   "train_seconds": 248.7858908176422,
+   "eval_seconds": 11.628340721130371,
+   "eval_views": 100,
+   "peak_mempool_bytes": 237029847
+  },
+  {
+   "name": "pilot_B_lego_c30000_sparse",
+   "arm": "B",
+   "capacity": 30000,
+   "loss": "sparse",
+   "psnr_db": 29.249521941509897,
+   "ssim": 0.9411394393444061,
+   "lpips": 0.0446067763864994,
+   "final_active": 30000,
+   "ms_per_iteration": 10.271304489998148,
+   "train_seconds": 210.51743507385254,
+   "eval_seconds": 11.608601093292236,
+   "eval_views": 100,
+   "peak_mempool_bytes": 238708823
+  },
+  {
+   "name": "pilot_B_lego_c30000_dense",
+   "arm": "B",
+   "capacity": 30000,
+   "loss": "dense",
+   "psnr_db": 30.449088052036885,
+   "ssim": 0.9521144276857376,
+   "lpips": 0.034454542472958566,
+   "final_active": 30000,
+   "ms_per_iteration": 12.376716839999427,
+   "train_seconds": 252.5633189678192,
+   "eval_seconds": 11.879977464675903,
+   "eval_views": 100,
+   "peak_mempool_bytes": 237268823
+  }
+ ],
+ "pilot_projection": {
+  "capacity": 10000,
+  "runs": 63,
+  "split_views": {
+   "val": 100,
+   "test": 200
+  },
+  "dense": {
+   "hours": 4.797219301064809,
+   "q1_hours": 0.5226389384269714,
+   "q2_hours": 2.590694468418757,
+   "q3_hours": 1.6838858942190806
+  },
+  "sparse": {
+   "hours": 3.4637144553661345,
+   "q1_hours": 0.3419822055763668,
+   "q2_hours": 1.7961818880505032,
+   "q3_hours": 1.3255503617392645
+  }
+ },
+ "b_lr": 0.0005,
+ "b_lr_rule": "max val SSIM (4 dp), then PSNR"
+}

@@ -1,0 +1,38 @@
+{
+ "name": "B0_lego_s0_cap25_warm",
+ "arm": "B0",
+ "scene": "lego",
+ "seed": 0,
+ "b_lr": 0.0005,
+ "budget": 0.25,
+ "warm_from": "A_lego_s0_cap25",
+ "capacity": 2500,
+ "loss": "dense",
+ "initial_splats": 1000,
+ "split": "test",
+ "psnr_db": 25.63600047777426,
+ "ssim": 0.8834750658273697,
+ "lpips": 0.1357221671566367,
+ "mse": 0.002823758166632615,
+ "eval_views": 200,
+ "train_seconds": 70.11345863342285,
+ "eval_seconds": 19.059622764587402,
+ "ms_per_iteration": 3.365398374997312,
+ "peak_mempool_bytes": 213370631,
+ "final_active": 2500,
+ "b_summary": {
+  "mean": 0.0,
+  "std": 0.0,
+  "percentiles": [
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0
+  ],
+  "at_min": 0.0,
+  "at_max": 0.0
+ }
+}

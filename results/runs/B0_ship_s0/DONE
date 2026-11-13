@@ -1,0 +1,39 @@
+{
+ "name": "B0_ship_s0",
+ "arm": "B0",
+ "scene": "ship",
+ "seed": 0,
+ "b_lr": 0.0005,
+ "budget": 1.0,
+ "views": 100,
+ "eval_split": "test",
+ "capacity": 10000,
+ "loss": "dense",
+ "initial_splats": 1000,
+ "split": "test",
+ "psnr_db": 26.280484574162045,
+ "ssim": 0.8235090610384941,
+ "lpips": 0.14820963088423014,
+ "mse": 0.0030673083884175866,
+ "eval_views": 200,
+ "train_seconds": 152.87708067893982,
+ "eval_seconds": 20.016055583953857,
+ "ms_per_iteration": 7.47334117499995,
+ "peak_mempool_bytes": 219824727,
+ "final_active": 10000,
+ "b_summary": {
+  "mean": 0.0,
+  "std": 0.0,
+  "percentiles": [
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0
+  ],
+  "at_min": 0.0,
+  "at_max": 0.0
+ }
+}

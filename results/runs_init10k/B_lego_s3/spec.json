@@ -1,0 +1,1 @@
+{"arm": "B", "scene": "lego", "seed": 3, "b_lr": 0.0005, "budget": 1.0, "views": 100, "eval_split": "test"}

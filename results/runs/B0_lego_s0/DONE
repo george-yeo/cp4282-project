@@ -1,0 +1,36 @@
+{
+ "name": "B0_lego_s0",
+ "arm": "B0",
+ "scene": "lego",
+ "seed": 0,
+ "b_lr": 0.0005,
+ "capacity": 10000,
+ "loss": "dense",
+ "initial_splats": 1000,
+ "split": "test",
+ "psnr_db": 27.52120404269541,
+ "ssim": 0.9175058311223984,
+ "lpips": 0.07533749891445041,
+ "mse": 0.0018592654872918502,
+ "eval_views": 200,
+ "train_seconds": 151.39396715164185,
+ "eval_seconds": 19.566378593444824,
+ "ms_per_iteration": 7.395869289999245,
+ "peak_mempool_bytes": 219823703,
+ "final_active": 10000,
+ "b_summary": {
+  "mean": 0.0,
+  "std": 0.0,
+  "percentiles": [
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0
+  ],
+  "at_min": 0.0,
+  "at_max": 0.0
+ }
+}

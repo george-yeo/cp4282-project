@@ -1,0 +1,22 @@
+{
+ "name": "A_ship_s1",
+ "arm": "A",
+ "scene": "ship",
+ "seed": 1,
+ "b_lr": 0.0005,
+ "capacity": 10000,
+ "loss": "dense",
+ "initial_splats": 10000,
+ "split": "test",
+ "psnr_db": 27.083060625885874,
+ "ssim": 0.8382606628537178,
+ "lpips": 0.13820952661335467,
+ "mse": 0.002655373579764273,
+ "eval_views": 200,
+ "train_seconds": 166.99395537376404,
+ "eval_seconds": 20.241639614105225,
+ "ms_per_iteration": 8.222189479999361,
+ "peak_mempool_bytes": 219825751,
+ "final_active": 10000,
+ "b_summary": null
+}

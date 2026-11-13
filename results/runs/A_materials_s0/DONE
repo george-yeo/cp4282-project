@@ -1,0 +1,22 @@
+{
+ "name": "A_materials_s0",
+ "arm": "A",
+ "scene": "materials",
+ "seed": 0,
+ "b_lr": 0.0005,
+ "capacity": 10000,
+ "loss": "dense",
+ "initial_splats": 1000,
+ "split": "test",
+ "psnr_db": 24.50999025800295,
+ "ssim": 0.90547212600708,
+ "lpips": 0.07698494531214237,
+ "mse": 0.003716503770556301,
+ "eval_views": 200,
+ "train_seconds": 138.2275288105011,
+ "eval_seconds": 19.858679056167603,
+ "ms_per_iteration": 6.791818425001111,
+ "peak_mempool_bytes": 219822679,
+ "final_active": 10000,
+ "b_summary": null
+}

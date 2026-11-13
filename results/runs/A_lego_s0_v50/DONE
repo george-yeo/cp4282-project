@@ -1,0 +1,23 @@
+{
+ "name": "A_lego_s0_v50",
+ "arm": "A",
+ "scene": "lego",
+ "seed": 0,
+ "b_lr": 0.0005,
+ "views": 50,
+ "capacity": 10000,
+ "loss": "dense",
+ "initial_splats": 1000,
+ "split": "test",
+ "psnr_db": 26.148956352731258,
+ "ssim": 0.902515709400177,
+ "lpips": 0.08657515075057745,
+ "mse": 0.0026830062351655215,
+ "eval_views": 200,
+ "train_seconds": 146.64403700828552,
+ "eval_seconds": 19.282081842422485,
+ "ms_per_iteration": 7.243070995001472,
+ "peak_mempool_bytes": 123820503,
+ "final_active": 10000,
+ "b_summary": null
+}

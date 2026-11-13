@@ -1,0 +1,22 @@
+{
+ "name": "A_chair_s1",
+ "arm": "A",
+ "scene": "chair",
+ "seed": 1,
+ "b_lr": 0.0005,
+ "capacity": 10000,
+ "loss": "dense",
+ "initial_splats": 1000,
+ "split": "test",
+ "psnr_db": 29.97923144493653,
+ "ssim": 0.9481703948974609,
+ "lpips": 0.05085073420777917,
+ "mse": 0.0010786986263701692,
+ "eval_views": 200,
+ "train_seconds": 142.33681106567383,
+ "eval_seconds": 18.944844722747803,
+ "ms_per_iteration": 6.995264395000413,
+ "peak_mempool_bytes": 219822679,
+ "final_active": 10000,
+ "b_summary": null
+}

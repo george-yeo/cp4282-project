@@ -1,0 +1,22 @@
+{
+ "name": "A_mic_s0",
+ "arm": "A",
+ "scene": "mic",
+ "seed": 0,
+ "b_lr": 0.0005,
+ "capacity": 10000,
+ "loss": "dense",
+ "initial_splats": 10000,
+ "split": "test",
+ "psnr_db": 30.14596069085347,
+ "ssim": 0.9579001903533936,
+ "lpips": 0.033177216798067094,
+ "mse": 0.0010218302669818514,
+ "eval_views": 200,
+ "train_seconds": 149.2094223499298,
+ "eval_seconds": 19.213306665420532,
+ "ms_per_iteration": 7.341097499997704,
+ "peak_mempool_bytes": 219821655,
+ "final_active": 10000,
+ "b_summary": null
+}

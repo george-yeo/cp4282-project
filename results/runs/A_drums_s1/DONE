@@ -1,0 +1,22 @@
+{
+ "name": "A_drums_s1",
+ "arm": "A",
+ "scene": "drums",
+ "seed": 1,
+ "b_lr": 0.0005,
+ "capacity": 10000,
+ "loss": "dense",
+ "initial_splats": 1000,
+ "split": "test",
+ "psnr_db": 23.968815614074853,
+ "ssim": 0.906428630053997,
+ "lpips": 0.08359876064583659,
+ "mse": 0.004256654430646449,
+ "eval_views": 200,
+ "train_seconds": 136.94669032096863,
+ "eval_seconds": 19.02749276161194,
+ "ms_per_iteration": 6.722970095000346,
+ "peak_mempool_bytes": 219822679,
+ "final_active": 10000,
+ "b_summary": null
+}

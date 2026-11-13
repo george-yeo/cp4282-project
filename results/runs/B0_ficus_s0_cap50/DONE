@@ -1,0 +1,37 @@
+{
+ "name": "B0_ficus_s0_cap50",
+ "arm": "B0",
+ "scene": "ficus",
+ "seed": 0,
+ "b_lr": 0.0005,
+ "budget": 0.5,
+ "capacity": 5000,
+ "loss": "dense",
+ "initial_splats": 1000,
+ "split": "test",
+ "psnr_db": 26.238252862713644,
+ "ssim": 0.9378554254770279,
+ "lpips": 0.04959948182106018,
+ "mse": 0.002454642156371847,
+ "eval_views": 200,
+ "train_seconds": 88.21263360977173,
+ "eval_seconds": 19.049787998199463,
+ "ms_per_iteration": 4.264290249999613,
+ "peak_mempool_bytes": 215519607,
+ "final_active": 5000,
+ "b_summary": {
+  "mean": 0.0,
+  "std": 0.0,
+  "percentiles": [
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0
+  ],
+  "at_min": 0.0,
+  "at_max": 0.0
+ }
+}

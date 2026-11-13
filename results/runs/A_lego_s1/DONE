@@ -1,0 +1,22 @@
+{
+ "name": "A_lego_s1",
+ "arm": "A",
+ "scene": "lego",
+ "seed": 1,
+ "b_lr": 0.001,
+ "capacity": 10000,
+ "loss": "dense",
+ "initial_splats": 1000,
+ "split": "test",
+ "psnr_db": 27.424875533773406,
+ "ssim": 0.9171357002854347,
+ "lpips": 0.07708930727094412,
+ "mse": 0.0019068901118589566,
+ "eval_views": 200,
+ "train_seconds": 145.95336270332336,
+ "eval_seconds": 19.33798360824585,
+ "ms_per_iteration": 7.163923290002276,
+ "peak_mempool_bytes": 219823703,
+ "final_active": 10000,
+ "b_summary": null
+}

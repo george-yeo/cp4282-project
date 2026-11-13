@@ -1,0 +1,1 @@
+{"arm": "A", "scene": "lego", "seed": 0, "b_lr": 0.001, "pilot": true, "capacity": 30000, "loss": "dense", "eval_split": "val"}

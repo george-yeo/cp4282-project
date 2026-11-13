@@ -1,0 +1,39 @@
+{
+ "name": "B0_materials_s0",
+ "arm": "B0",
+ "scene": "materials",
+ "seed": 0,
+ "b_lr": 0.0005,
+ "budget": 1.0,
+ "views": 100,
+ "eval_split": "test",
+ "capacity": 10000,
+ "loss": "dense",
+ "initial_splats": 1000,
+ "split": "test",
+ "psnr_db": 24.484406311670636,
+ "ssim": 0.9053064420819282,
+ "lpips": 0.07582275802269578,
+ "mse": 0.003743431009352207,
+ "eval_views": 200,
+ "train_seconds": 143.7515528202057,
+ "eval_seconds": 19.073774099349976,
+ "ms_per_iteration": 7.00609821500002,
+ "peak_mempool_bytes": 219822679,
+ "final_active": 10000,
+ "b_summary": {
+  "mean": 0.0,
+  "std": 0.0,
+  "percentiles": [
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0
+  ],
+  "at_min": 0.0,
+  "at_max": 0.0
+ }
+}

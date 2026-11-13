@@ -1,0 +1,37 @@
+{
+ "name": "B0_lego_s0_cap50",
+ "arm": "B0",
+ "scene": "lego",
+ "seed": 0,
+ "b_lr": 0.0005,
+ "budget": 0.5,
+ "capacity": 5000,
+ "loss": "dense",
+ "initial_splats": 1000,
+ "split": "test",
+ "psnr_db": 26.173731399726027,
+ "ssim": 0.8945548889040947,
+ "lpips": 0.11120483037084342,
+ "mse": 0.0025090189796173946,
+ "eval_views": 200,
+ "train_seconds": 94.43226051330566,
+ "eval_seconds": 19.54292106628418,
+ "ms_per_iteration": 4.5717888050014155,
+ "peak_mempool_bytes": 215521655,
+ "final_active": 5000,
+ "b_summary": {
+  "mean": 0.0,
+  "std": 0.0,
+  "percentiles": [
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0
+  ],
+  "at_min": 0.0,
+  "at_max": 0.0
+ }
+}

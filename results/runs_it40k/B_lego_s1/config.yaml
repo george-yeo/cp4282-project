@@ -1,0 +1,40 @@
+paths:
+  data: <data-root>/lego
+  output: B_lego_s1/final.png
+  init_ply: null
+runtime:
+  arch: gpu
+  seed: 1
+model:
+  width: 400
+  height: 400
+  capacity: 10000
+  initial_splats: 1000
+  background: white
+training:
+  iterations: 40000
+densification:
+  fraction: 0.2
+  opacity_reset_interval: 0
+sparse:
+  enabled: false
+learning_rates:
+  position_max_steps: 40000
+  shape: 0.0005
+convergence:
+  enabled: false
+reporting:
+  log_every: 400
+  eval_every: 400
+  snapshot_every: 40000
+  save_ply: true
+kernel:
+  type: beta
+  learn_b: true
+  b_init: 0.0
+  b_min: -2.0
+  b_max: 2.0
+  moment_match_init: true
+  moment_match: truncated
+  densifier: course
+  moment_dim: 2

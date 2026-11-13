@@ -1,0 +1,22 @@
+{
+ "name": "A_hotdog_s0",
+ "arm": "A",
+ "scene": "hotdog",
+ "seed": 0,
+ "b_lr": 0.0005,
+ "capacity": 10000,
+ "loss": "dense",
+ "initial_splats": 10000,
+ "split": "test",
+ "psnr_db": 34.00654043577766,
+ "ssim": 0.9601179432868957,
+ "lpips": 0.036604155749082566,
+ "mse": 0.0005100095974194119,
+ "eval_views": 200,
+ "train_seconds": 150.74785017967224,
+ "eval_seconds": 19.189579010009766,
+ "ms_per_iteration": 7.414801400000579,
+ "peak_mempool_bytes": 219824727,
+ "final_active": 10000,
+ "b_summary": null
+}
